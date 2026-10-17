@@ -47,7 +47,7 @@ export function Tone() {
 
   return (
     <section className="page tone">
-      <div className="segmented" role="tablist">
+      <div className="segmented">
         <button className={mode === 'long' ? 'on' : ''} onClick={() => setMode('long')} data-testid="mode-long">롱톤</button>
         <button className={mode === 'tongue' ? 'on' : ''} onClick={() => setMode('tongue')} data-testid="mode-tongue">텅잉</button>
         <button className={mode === 'graph' ? 'on' : ''} onClick={() => setMode('graph')} data-testid="mode-graph">음정·드론</button>

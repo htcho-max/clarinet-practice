@@ -129,6 +129,18 @@ try {
     await page.reload();
     await tab(page, 'metronome');
     ok((await page.getByTestId('bpm').textContent()) === '85', '새로고침 후 BPM 유지');
+        // 백업 → 되돌리기
+    await tab(page, 'today');
+    await page.getByRole('button', { name: '설정' }).click();
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.getByTestId('backup').click()]);
+    const fp = await dl.path();
+    const fs = await import('node:fs');
+    const bk = JSON.parse(fs.readFileSync(fp, 'utf8'));
+    ok(bk.version === 2 && bk.tables.sessions.length >= 1 && bk.tables.pieces.length >= 1, `백업 파일 (세션 ${bk.tables.sessions.length}, 곡 ${bk.tables.pieces.length})`);
+    page.once('dialog', (d) => d.accept());
+    await page.getByTestId('restore-file').setInputFiles(fp);
+    ok(/되돌렸어요/.test(await page.getByTestId('data-msg').textContent({ timeout: 5000 }).catch(() => '')), '백업에서 되돌리기');
+    await page.waitForTimeout(2500);
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
     await browser.close();
   }
@@ -172,6 +184,64 @@ try {
     ok(!/불러오지 못해서/.test(await page.locator('.page').textContent()), '클라리넷 샘플 불러오기');
     await page.waitForTimeout(2500);
     ok(/들어보기/.test(await page.getByTestId('play-toggle').textContent()), '재생 끝나면 버튼 복귀');
+    // 재생 중 템포 변경: 끊기지 않고 이어서 재생
+    await page.getByTestId('play-bpm').fill('40');
+    await page.getByTestId('play-toggle').click();
+    await page.waitForTimeout(7500); // 카운트인 4박(6초) + 첫 음
+    const before = await page.evaluate(() => document.querySelector('.now-note')?.id);
+    await page.getByTestId('play-bpm').fill('200');
+    await page.waitForTimeout(1500);
+    const after = await page.evaluate(() => document.querySelector('.now-note')?.id);
+    ok(!!before && !!after && before !== after, `재생 중 템포 변경 후 계속 진행 (${before} → ${after})`);
+    // 떠 있는 조작: 멈춤 → 이어서
+    if (await page.getByTestId('float-stop').isVisible().catch(() => false)) await page.getByTestId('float-stop').click();
+    await page.getByTestId('play-bpm').fill('60');
+    await page.getByTestId('play-bpm').blur();
+    await page.getByTestId('play-toggle').click();
+    await page.waitForTimeout(5000);
+    ok(await seen(page.getByTestId('float-pause')), '재생 중 떠 있는 멈춤 버튼');
+    await page.getByTestId('float-pause').click();
+    const pausedId = await page.evaluate(() => document.querySelector('.now-note')?.id);
+    await page.waitForTimeout(1200);
+    const still = await page.evaluate(() => document.querySelector('.now-note')?.id);
+    ok(!!pausedId && pausedId === still, `멈추면 그 음에서 정지 (${pausedId})`);
+    await page.getByTestId('float-resume').click();
+    await page.waitForTimeout(1600);
+    const moved = await page.evaluate(() => document.querySelector('.now-note')?.id);
+    ok(!!moved && moved !== pausedId, `이어서 재생 (${pausedId} → ${moved})`);
+    await page.getByTestId('float-stop').click();
+    ok(!(await page.getByTestId('float-ctl').isVisible().catch(() => false)), '정지하면 떠 있는 막대 사라짐');
+    // 마디 입력: 다 지우고 새로 입력, 길이 칩
+    await page.getByTestId('to').fill('');
+    await page.getByTestId('to').fill('2');
+    await page.getByTestId('to').blur();
+    ok((await page.getByTestId('to').inputValue()) === '2', '끝 마디 지우고 다시 입력');
+    await page.getByTestId('len-chips').getByRole('button', { name: '1마디' }).click();
+    await page.waitForTimeout(400);
+    ok((await page.getByTestId('to').inputValue()) === (await page.getByTestId('from').inputValue()), '1마디 칩 → 끝 = 시작');
+    await page.getByRole('button', { name: '끝 마디 늘리기' }).click();
+    await page.waitForTimeout(400);
+    ok(Number(await page.getByTestId('to').inputValue()) === Number(await page.getByTestId('from').inputValue()) + 1, '끝 마디 + 버튼');
+    // 휴대폰 뒤로 가기: 악보 → 목록
+    await page.goBack();
+    ok(await seen(page.getByTestId('open-exercises')), `뒤로 가기로 악보 목록 (${page.url()})`);
+    await page.getByTestId('score-open').first().click();
+    await page.waitForTimeout(1200);
+    const order = await page.evaluate(() => { const a = document.querySelector('[data-testid=play-card]'), b = document.querySelector('.score-sheet'); return !!(a && b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)); });
+    ok(order, '메뉴가 악보 위에 있음');
+    await page.screenshot({ path: 'scripts/shot-layout.png', fullPage: true });
+    // 연습 기록 탭: 오늘 악보 연습 + 녹음 연동
+    await page.getByTestId('play-toggle').click().catch(() => {});
+    await tab(page, 'log');
+    await page.locator('.log .segmented').getByRole('button', { name: '연습 기록' }).click();
+    ok(await seen(page.getByTestId('day-runs')), '달력 오늘 칸에 악보 연습 기록');
+    await page.getByTestId('day-runs').locator('.rec-title').first().click();
+    ok(await seen(page.getByTestId('day-runs').locator('audio')), '연습 기록에서 녹음 재생');
+    await page.screenshot({ path: 'scripts/shot-runs.png', fullPage: true });
+    await page.locator('.log .segmented').first().getByRole('button', { name: '녹음' }).click();
+    await page.getByTestId('rec-filter').getByRole('button', { name: '악보 연습' }).click();
+    await page.locator('.rec-list .rec-title').first().click();
+    ok(/악보 채점: 1~2마디/.test(await page.getByTestId('rec-run').textContent().catch(() => '')), '녹음 목록에 악보 채점 결과 연동');
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
     await browser.close();
   }
@@ -266,6 +336,34 @@ try {
     console.log('  텅잉 결과:', t.slice(0, 120));
     ok(hits >= 14, `텅잉 어택 ${hits}/16 찾음`);
     await page.screenshot({ path: 'scripts/shot-tongue.png', fullPage: true });
+    ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
+    await browser.close();
+  }
+  // ── 6. 태블릿 가로 (1180×820) ──
+  {
+    const { browser, page, errors } = await launch('bb466.wav');
+    await page.setViewportSize({ width: 1180, height: 820 });
+    await tab(page, 'fingering');
+    await page.waitForTimeout(500);
+    const g = await page.getByTestId('fg-grid').boundingBox(), c = await page.getByTestId('fg-card').boundingBox();
+    ok(!!g && !!c && c.x > g.x + g.width - 1, `태블릿: 운지표 음 고르기 왼쪽, 운지 카드 오른쪽 (${Math.round(g?.x ?? 0)} / ${Math.round(c?.x ?? 0)})`);
+    await page.screenshot({ path: 'scripts/shot-tablet-fingering.png' });
+    await page.getByTestId('quiz-tab').click();
+    await page.goBack();
+    ok(await seen(page.getByTestId('fg-grid')), '뒤로 가기: 운지 퀴즈 → 운지표');
+    await tab(page, 'tone');
+    await page.getByTestId('mode-long').click();
+    const set = await page.locator('.tone > .card').first().boundingBox(), live = await page.getByTestId('longtone-live').boundingBox();
+    ok(!!set && !!live && live.x > set.x + 10 && live.y < 400, '태블릿 가로: 롱톤 설정 왼쪽, 재는 화면 오른쪽 위');
+    await page.screenshot({ path: 'scripts/shot-tablet-tone.png' });
+    await tab(page, 'score');
+    await page.getByTestId('open-exercises').click();
+    await page.getByTestId('ex-B3').click();
+    await page.getByTestId('exercise-card').waitFor({ timeout: 5000 });
+    await page.waitForTimeout(1500);
+    const top = await page.locator('.score-top').boundingBox(), main = await page.locator('.score-main').boundingBox();
+    ok(!!top && !!main && main.x > top.x + top.width - 1, '태블릿 가로: 왼쪽 조작, 오른쪽 악보');
+    await page.screenshot({ path: 'scripts/shot-tablet-score.png' });
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
     await browser.close();
   }

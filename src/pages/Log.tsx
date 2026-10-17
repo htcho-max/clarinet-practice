@@ -5,6 +5,7 @@ import { db } from '../data/db';
 import { addDays, formatDuration, localDate, streak } from '../data/dates';
 import { Pieces } from './Pieces';
 import { Recordings, RecPlayerById } from './Recordings';
+import { useBackLayer } from '../state/back';
 import { useScoreRuns, runText } from '../state/useScoreRuns';
 import { clock } from '../data/dates';
 
@@ -23,9 +24,10 @@ type View = 'calendar' | 'pieces' | 'recordings';
 export function Log() {
   const [view, setView] = useState<View>(() => { try { return (localStorage.getItem('clarinet-log-view') as View) || 'calendar'; } catch { return 'calendar'; } });
   const go = (v: View) => { setView(v); try { localStorage.setItem('clarinet-log-view', v); } catch { /* 무시 */ } };
+  useBackLayer(view !== 'calendar', () => go('calendar'));
   return (
     <section className="page log">
-      <div className="segmented" role="tablist">
+      <div className="segmented">
         <button className={view === 'calendar' ? 'on' : ''} onClick={() => go('calendar')}>연습 기록</button>
         <button className={view === 'pieces' ? 'on' : ''} onClick={() => go('pieces')}>곡</button>
         <button className={view === 'recordings' ? 'on' : ''} onClick={() => go('recordings')}>녹음</button>
@@ -96,7 +98,7 @@ function Calendar() {
         <div className="cal">
           {WEEKDAYS.map((w) => <span key={w} className="cal-wd">{w}</span>)}
           {cells.map((d, i) => d === null ? <span key={`e${i}`} /> : (
-            <button key={d} className={`cal-day lv${level(byDate.get(d) ?? 0)} ${d === selected ? 'sel' : ''} ${d === today ? 'today' : ''}`} onClick={() => setSelected(d)}>
+            <button key={d} className={`cal-day lv${level(byDate.get(d) ?? 0)} ${d === selected ? 'sel' : ''} ${d === today ? 'today' : ''}`} onClick={() => setSelected(d)} aria-pressed={d === selected} aria-label={`${Number(d.slice(5, 7))}월 ${Number(d.slice(8))}일${byDate.get(d) ? ` 연습 ${formatDuration(byDate.get(d)!)}` : ''}`}>
               {Number(d.slice(8))}
             </button>
           ))}

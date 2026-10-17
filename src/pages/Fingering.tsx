@@ -8,6 +8,7 @@ import { playTone } from '../audio/tone';
 import { usePitch } from '../state/usePitch';
 import { useSettings } from '../state/settings';
 import { useWakeLock } from '../state/wakeLock';
+import { useBackLayer } from '../state/back';
 
 type Range = 'low' | 'mid' | 'high';
 const RANGES: { id: Range; label: string; lo: number; hi: number }[] = [
@@ -28,6 +29,8 @@ export function Fingering() {
   const pitch = usePitch(settings.minDb);
   useWakeLock(pitch.on, settings.wakeLock);
   useEffect(() => { try { localStorage.setItem('clarinet-fg-range', range); } catch { /* 무시 */ } }, [range]);
+  // 휴대폰 뒤로 가기: 퀴즈 → 운지표
+  useBackLayer(mode === 'quiz', () => setMode('chart'));
 
   const r = RANGES.find((x) => x.id === range)!;
   const list = FINGERINGS.filter((n) => n.midi >= r.lo && n.midi <= r.hi);
@@ -52,7 +55,7 @@ export function Fingering() {
 
   return (
     <section className="page fingering-page">
-      <div className="segmented" role="tablist">
+      <div className="segmented">
         <button className={mode === 'chart' ? 'on' : ''} onClick={() => setMode('chart')}>운지표</button>
         <button className={mode === 'quiz' ? 'on' : ''} onClick={() => setMode('quiz')} data-testid="quiz-tab">운지 퀴즈</button>
       </div>

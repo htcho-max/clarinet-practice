@@ -77,7 +77,7 @@ export function Tuner() {
 
   return (
     <section className="page tuner">
-      <div className="segmented" role="tablist">
+      <div className="segmented">
         <button className={mode === 'auto' ? 'on' : ''} onClick={() => { setMode('auto'); stopRef0(); }}>자동</button>
         <button className={mode === 'tune' ? 'on' : ''} onClick={() => setMode('tune')} data-testid="tune-mode">조율하기</button>
       </div>
