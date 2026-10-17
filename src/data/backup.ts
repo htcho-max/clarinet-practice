@@ -1,8 +1,9 @@
+import { P } from '../instruments/profiles';
 import { db } from './db';
 
 /** 백업 파일 형식 (버전 2: 모든 표) */
 export interface Backup {
-  app: 'clarinet-practice';
+  app: string;
   version: 2;
   exportedAt: string;
   withRecordings: boolean;
@@ -34,18 +35,18 @@ export async function makeBackup(withRecordings: boolean): Promise<Blob> {
     }
     tables[t] = await (db as unknown as Record<string, { toArray: () => Promise<unknown[]> }>)[t].toArray();
   }
-  const data: Backup = { app: 'clarinet-practice', version: 2, exportedAt: new Date().toISOString(), withRecordings, tables };
+  const data: Backup = { app: P.dbName, version: 2, exportedAt: new Date().toISOString(), withRecordings, tables };
   return new Blob([JSON.stringify(data)], { type: 'application/json' });
 }
 
 /** 백업 파일 내려받기 (가능하면 공유 시트로) */
 export async function saveBackup(withRecordings: boolean) {
   const blob = await makeBackup(withRecordings);
-  const name = `clarinet-practice-${new Date().toISOString().slice(0, 10)}${withRecordings ? '-녹음포함' : ''}.json`;
+  const name = `${P.dbName}-${new Date().toISOString().slice(0, 10)}${withRecordings ? '-녹음포함' : ''}.json`;
   const file = new File([blob], name, { type: 'application/json' });
   const nav = navigator as Navigator & { canShare?: (d: unknown) => boolean };
   if (nav.canShare?.({ files: [file] }) && /Android|iPhone|iPad/i.test(navigator.userAgent)) {
-    try { await nav.share({ files: [file], title: '클라리넷 연습 백업' }); return; } catch { /* 취소하면 내려받기로 */ }
+    try { await nav.share({ files: [file], title: `${P.name} 연습 백업` }); return; } catch { /* 취소하면 내려받기로 */ }
   }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -62,8 +63,8 @@ export async function restoreBackup(text: string): Promise<{ counts: Record<stri
     data.tables = { sessions: data.sessions, kv: data.settings ? [{ key: 'settings', value: data.settings }] : [] };
     data.withRecordings = false;
   }
-  if (data.app && data.app !== 'clarinet-practice') throw new Error('다른 앱(바이올린 등)의 백업 파일이에요.');
-  if (!data.tables) throw new Error('클라리넷 연습 도우미 백업 파일이 아니에요.');
+  if (data.app && data.app !== P.dbName) throw new Error(data.app === 'clarinet-practice' || data.app === 'flute-practice' ? `${data.app === 'flute-practice' ? '플룻' : '클라리넷'} 기록의 백업 파일이에요. 설정에서 그 악기로 바꾼 뒤 되돌리세요.` : '다른 앱(바이올린 등)의 백업 파일이에요.');
+  if (!data.tables) throw new Error('연습 도우미 백업 파일이 아니에요.');
   const t = data.tables;
   const counts: Record<string, number> = {};
   const recs = data.withRecordings && Array.isArray(t.recordings)

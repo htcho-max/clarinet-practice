@@ -1,12 +1,12 @@
 import { resumeAudio } from './context';
-import { reedWave } from './timbre';
+import { waveFor } from './timbre';
 import { toSounding } from './notes';
 
 /** 기준음 재생 (freq 는 악보음 주파수, 실음으로 바꿔서 냄). stop()을 돌려줍니다. durationSec 없으면 계속 재생 */
 export async function playTone(freq: number, durationSec?: number, volume = 0.25): Promise<() => void> {
   const ctx = await resumeAudio();
   const osc = ctx.createOscillator();
-  osc.setPeriodicWave(reedWave(ctx));
+  osc.setPeriodicWave(waveFor(ctx));
   osc.frequency.value = toSounding(freq);
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass';

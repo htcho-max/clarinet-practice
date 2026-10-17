@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { liveQuery } from 'dexie';
-import { drone, DRONE_PRESETS } from '../audio/drone';
+import { drone } from '../audio/drone';
 import { NOTE_NAMES, NOTE_NAMES_KO, JUST_RATIOS, intervalName, freqToNote, justCents, midiToFreq, prettyName } from '../audio/notes';
 import { equalRef, justRef, summarize } from '../audio/segment';
 import { LongToneTracker, toneAdvice, type LongToneResult, type TonePoint } from '../audio/longtone';
@@ -10,8 +10,8 @@ import { resumeAudio } from '../audio/context';
 import { noteClick } from '../audio/clicks';
 import { CentsGauge, centsText } from '../components/CentsGauge';
 import { CentsTrace } from '../components/CentsTrace';
-import { FingeringDiagram } from '../components/FingeringDiagram';
-import { fingeringFor } from '../clarinet/fingerings';
+import { InstrumentDiagram } from '../components/InstrumentDiagram';
+import { P, fingeringFor } from '../instruments/profiles';
 import { useSettings } from '../state/settings';
 import { usePitch } from '../state/usePitch';
 import { useAnalysis } from '../state/useAnalysis';
@@ -43,7 +43,7 @@ export function Tone() {
   const [mode, setMode] = useState<Mode>(() => { try { return (localStorage.getItem('clarinet-tone-mode') as Mode) || 'long'; } catch { return 'long'; } });
   useEffect(() => { try { localStorage.setItem('clarinet-tone-mode', mode); } catch { /* 무시 */ } }, [mode]);
   useWakeLock(dronePlaying || pitch.on, settings.wakeLock);
-  const [root, setRoot] = useState(60);
+  const [root, setRoot] = useState(P.droneDefault);
 
   return (
     <section className="page tone">
@@ -84,7 +84,7 @@ function DroneCard({ root, setRoot, open }: { root: number; setRoot: (m: number)
       <details className="card" open={open}>
         <summary className="card-summary"><b>드론</b> <span className="muted">{playing ? `켜짐 · ${label}` : '꺼짐'}</span></summary>
         <div className="chips">
-          {DRONE_PRESETS.map((p) => (
+          {P.drones.map((p) => (
             <button key={p.id} className={p.rootMidi === root ? 'chip on' : 'chip'} onClick={() => setRoot(p.rootMidi)}>{p.label}</button>
           ))}
         </div>
@@ -115,12 +115,12 @@ function DroneCard({ root, setRoot, open }: { root: number; setRoot: (m: number)
 
 /* ---------------- 롱톤 ---------------- */
 
-const LONG_NOTES = [67, 60, 64, 57, 55, 52, 71, 72];
+const LONG_NOTES = P.longNotes;
 const GOALS = [4, 8, 12, 16, 20];
 
 function LongTone({ pitch }: { pitch: ReturnType<typeof usePitch> }) {
   const { settings } = useSettings();
-  const [target, setTarget] = useState<number | null>(67);
+  const [target, setTarget] = useState<number | null>(P.longDefault);
   const [pattern, setPattern] = useState<'steady' | 'swell'>('steady');
   const [goal, setGoal] = useState(8);
   const [armed, setArmed] = useState(false);
@@ -201,8 +201,8 @@ function LongTone({ pitch }: { pitch: ReturnType<typeof usePitch> }) {
         </div>
         {fing && (
           <div className="tuner-fing">
-            <FingeringDiagram keys={fing.main.keys} size={64} compact />
-            <p className="hint">처음엔 열린 G(G4)나 C4처럼 편한 음으로. 숨을 크게 들이마시고, 배로 받치며 같은 속도로 내보내요. 소리가 끊기면 자동으로 끝나요.</p>
+            <InstrumentDiagram keys={fing.main.keys} size={64} compact />
+            <p className="hint">{P.longHint}</p>
           </div>
         )}
       </div>
@@ -382,7 +382,7 @@ function Tonguing({ pitch }: { pitch: ReturnType<typeof usePitch> }) {
           {PER_BEAT.map((p) => <button key={p.n} className={perBeat === p.n ? 'on' : ''} onClick={() => setPerBeat(p.n)} disabled={busy}>{p.label}</button>)}
         </div>
         <label className="small"><input type="checkbox" checked={clickAll} onChange={(e) => setClickAll(e.target.checked)} disabled={busy} /> 끝까지 클릭 듣기 (이어폰 권장 — 스피커 클릭은 어택과 헷갈릴 수 있어요)</label>
-        <p className="hint">편한 음 하나(열린 G, C4 등)로 "투-투-투" 혀끝을 리드에 댔다 떼며 박에 맞춰 불어요. 한 마디 세는 소리 뒤에 시작해요. 숨은 끊지 말고 혀로만 음을 나눠요.</p>
+        <p className="hint">{P.tongueHint}</p>
       </div>
 
       <div className="card tongue-live" data-testid="tongue-live">
@@ -409,7 +409,7 @@ function Tonguing({ pitch }: { pitch: ReturnType<typeof usePitch> }) {
             <div><b>{result.evenPct === null ? '—' : `${Math.round(result.evenPct)}%`}</b><span>간격 흔들림</span></div>
           </div>
           <TongueTimeline r={result} />
-          <ul className="advice">{tongueAdvice(result).map((a) => <li key={a}>{a}</li>)}</ul>
+          <ul className="advice">{tongueAdvice(result, P.tongueExtra + ' ').map((a) => <li key={a}>{a}</li>)}</ul>
           {passed && <button className="secondary" onClick={() => setBpm(Math.min(160, bpm + 4))}>템포 올리기 (♩={bpm + 4})</button>}
         </div>
       )}
@@ -503,7 +503,7 @@ function PitchGraph({ pitch, root }: { pitch: ReturnType<typeof usePitch>; root:
             </tbody>
           </table>
         )}
-        <p className="hint">클라리넷은 음마다 음정 버릇이 달라요. 흔히 스로트 음(G♯4~B♭4)은 높게 나오기 쉬워요. 내 악기에서 어느 음이 늘 벗어나는지 여기서 확인하세요.</p>
+        <p className="hint">{P.pitchHabit}</p>
       </div>
     </>
   );

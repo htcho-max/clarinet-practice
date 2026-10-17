@@ -41,12 +41,15 @@ export interface BuildOptions {
   art?: ArtPattern;
   /** 한 마디 박 수 (4/4 = 4) */
   beats?: number;
+  /** 넘는 음 경계 (isBreak) */
+  breakAt?: number;
 }
 export interface BuiltNote { p: Pitch | null; dur: number; brk?: boolean; slur?: 'start' | 'stop'; stacc?: boolean; accent?: boolean; tenuto?: boolean; words?: string; tie?: 'start' | 'stop' | 'both' }
 export interface Built { xml: string; notes: BuiltNote[]; breakKeys: string[]; measures: number; error?: string }
 
 /** 브레이크(B♭4 ↔ B4)를 넘는지 */
-export const isBreak = (a: Pitch | null, b: Pitch | null) => !!a && !!b && ((midiOf(a) <= 70 && midiOf(b) >= 71) || (midiOf(a) >= 71 && midiOf(b) <= 70));
+/** 넘는 음인지: 앞 음과 이 음이 at(이 음부터 위쪽) 경계를 사이에 두는지. 클라리넷 브레이크 at=71(B4), 플룻 at=74(D5) */
+export const isBreak = (a: Pitch | null, b: Pitch | null, at = 71) => !!a && !!b && ((midiOf(a) < at && midiOf(b) >= at) || (midiOf(a) >= at && midiOf(b) < at));
 
 /** 패턴 → 리듬·아티큘레이션이 붙은 음 목록 */
 export function arrange(o: BuildOptions): BuiltNote[] {
@@ -66,7 +69,7 @@ export function arrange(o: BuildOptions): BuiltNote[] {
       const isEnd = j === ph.length - (lastPhrase ? 2 : 1); // 프레이즈 끝 (마침음 앞 음 포함)
       if (isFinal) dur = MEAS - (pos % MEAS); // 마침음은 마디 끝까지 (항상 박 위에서 시작)
       else if (isEnd) dur = (pos + dur) % DIV === 0 ? dur : DIV - (pos % DIV); // 박 끝까지 늘림
-      out.push({ p: n.p, dur, brk: isBreak(prev, n.p), stacc: art.stacc === 'all' && !isFinal, accent: art.accent && pos % DIV === 0 && !isFinal, tenuto: art.tenuto && !isFinal });
+      out.push({ p: n.p, dur, brk: isBreak(prev, n.p, o.breakAt), stacc: art.stacc === 'all' && !isFinal, accent: art.accent && pos % DIV === 0 && !isFinal, tenuto: art.tenuto && !isFinal });
       prev = n.p;
       pos += dur;
     });

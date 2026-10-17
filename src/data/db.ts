@@ -1,3 +1,4 @@
+import { P } from '../instruments/profiles';
 import Dexie, { type Table } from 'dexie';
 
 export interface SessionItem { key: string; label: string; sec: number; pieceId?: string }
@@ -138,7 +139,7 @@ class PracticeDB extends Dexie {
   scoreRuns!: Table<ScoreRun, number>;
   toneRuns!: Table<ToneRun, number>;
   constructor() {
-    super('clarinet-practice');
+    super(P.dbName);
     this.version(1).stores({
       sessions: '++id, date, startedAt',
       pieces: 'id, book, status',

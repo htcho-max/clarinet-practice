@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { db } from '../data/db';
 import { DEFAULT_SETTINGS, mergeSettings, type Settings } from '../data/settings';
 import { instrumentSemis, setTranspose } from '../audio/notes';
+import { P } from '../instruments/profiles';
 
 interface Ctx { settings: Settings; update: (patch: Partial<Settings>) => void; ready: boolean }
 const SettingsContext = createContext<Ctx>({ settings: DEFAULT_SETTINGS, update: () => {}, ready: false });
@@ -19,7 +20,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // 이조: 마이크 값·재생 소리가 모두 이 값을 씀
-  setTranspose(instrumentSemis(settings.instrument));
+  setTranspose(instrumentSemis(P.transposeChoices.includes(settings.instrument) ? settings.instrument : P.defaultTranspose));
 
   const update = useCallback((patch: Partial<Settings>) => {
     setSettings((prev) => {

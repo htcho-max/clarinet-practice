@@ -54,12 +54,58 @@ export const BASICS: Song[] = [
     text: 'G3:h r:h | F#3:h r:h | F3:h r:h | E3:h r:h | F3:h F#3:h | G3:w | E3:q F3:q G3:q A3:q | G3:q F3:q E3:h',
     tip: '모든 구멍을 막은 채 새끼손가락으로 키를 눌러요. E는 왼손, F는 오른손, F♯은 왼손 새끼.' },
 ];
-const ALL = [...BASICS, ...SONGS];
+/* ---------- 플룻 (C조, 실음) ---------- */
+
+const SPELL: [string, string][] = [['C', ''], ['C', '#'], ['D', ''], ['E', 'b'], ['E', ''], ['F', ''], ['F', '#'], ['G', ''], ['G', '#'], ['A', ''], ['B', 'b'], ['B', '']];
+/** 곡 글을 반음 단위로 옮기기 (C♯·F♯·G♯ 올림, E♭·B♭ 내림) */
+export function transposeText(text: string, semis: number): string {
+  return text.replace(/\b([A-G])(#|b)?(\d):/g, (_, L: string, acc: string | undefined, o: string) => {
+    const m = 12 * (Number(o) + 1) + [0, 2, 4, 5, 7, 9, 11]['CDEFGAB'.indexOf(L)] + (acc === '#' ? 1 : acc === 'b' ? -1 : 0) + semis;
+    const [l, a] = SPELL[((m % 12) + 12) % 12];
+    return `${l}${a}${Math.floor(m / 12) - 1}:`;
+  });
+}
+const KEY_UP: Record<number, Record<string, string>> = { 2: { C: 'D', G: 'A' }, 7: { C: 'G', G: 'D' } };
+/** 클라리넷 곡을 플룻용으로 (G장조 +7 또는 D장조 +2) */
+function forFlute(id: string, semis: 2 | 7, tip: string, range: string): Song {
+  const s = SONGS.find((x) => x.id === id)!;
+  return { ...s, id: `fl-${id}`, key: KEY_UP[semis][s.key], text: transposeText(s.text, semis), tip, range, title: s.title.replace(/ · .*$/, '') + (semis === 2 ? ' (D장조)' : ' (G장조)') };
+}
+
+export const FLUTE_BASICS: Song[] = [
+  { id: 'fa-bag', title: '왼손 세 음 · B4 A4 G4', key: 'G', tempo: 60, range: 'G4~B4',
+    text: 'B4:h r:h | A4:h r:h | G4:h r:h | A4:h r:h | B4:h A4:h | G4:h A4:h | B4:w | r:w | B4:q A4:q G4:q A4:q | B4:q A4:q G4:h',
+    tip: 'B = 엄지 + 검지, A = 엄지 + 검지·중지, G = 엄지 + 왼손 세 손가락. 오른손 새끼는 E♭ 키 위에 계속 둬요.' },
+  { id: 'fa-c5', title: 'C5 · C♯5', key: 'G', tempo: 60, range: 'G4~C♯5',
+    text: 'B4:h r:h | C5:h r:h | B4:h C5:h | B4:w | r:w | A4:h r:h | C#5:h r:h | B4:q C5:q B4:q A4:q | G4:w',
+    tip: 'C5는 왼손 검지만, C♯5는 거의 다 떼요. 악기가 흔들리지 않게 왼손 검지 아래·오른손 엄지·오른손 새끼로 받쳐요.' },
+  { id: 'fa-right', title: '오른손 더하기 · G F♯ E D', key: 'G', tempo: 60, range: 'D4~G4',
+    text: 'G4:h r:h | F#4:h r:h | E4:h r:h | D4:h r:h | E4:h F#4:h | G4:w | G4:q F#4:q E4:q D4:q | E4:q F#4:q G4:h',
+    tip: 'F♯은 오른손 약지만, E는 검지·중지, D는 셋 다 + 새끼를 E♭ 키에서 떼요. 낮은 음은 숨을 느리고 넓게.' },
+  { id: 'fa-f', title: 'F4 · B♭4', key: 'F', tempo: 60, range: 'E4~B♭4',
+    text: 'G4:h F4:h | E4:h F4:h | G4:h A4:h | Bb4:h A4:h | G4:w | F4:q G4:q A4:q Bb4:q | A4:q G4:q F4:h',
+    tip: 'F는 오른손 검지 하나, B♭은 "1 대 1"(왼손 검지 + 오른손 검지).' },
+  { id: 'fa-low', title: '낮은 음 · C4 C♯4 E♭4', key: 'C', tempo: 56, range: 'C4~F4',
+    text: 'D4:h r:h | C4:h r:h | D4:h E4:h | C4:w | r:w | Eb4:h D4:h | C#4:h D4:h | C4:q D4:q E4:q F4:q | E4:q D4:q C4:h',
+    tip: '오른손 새끼로 E♭ 키 → C♯ 롤러 → C 롤러. 낮은 음은 입술 구멍을 조금 크게, 숨은 느리게, 취구를 조금 더 덮어요.' },
+];
+
+export const FLUTE_SONGS: Song[] = [
+  forFlute('hotcross', 7, 'B·A·G 세 음만. 음마다 "투"로 시작해요.', 'G4~B4'),
+  forFlute('mary', 2, 'F♯는 오른손 약지만. E·D로 내려갈 때 오른손을 차례로 내려요.', 'D4~A4'),
+  forFlute('twinkle', 2, 'D4 → A4로 뛸 때 오른손을 한꺼번에 떼요. 낮은 D는 오른손 새끼를 떼는 것 잊지 말기.', 'D4~B4'),
+  forFlute('butterfly', 2, '같은 음이 이어질 때 숨은 끊지 말고 혀로만 나눠요.', 'D4~A4'),
+  forFlute('ode', 2, '점4분음표는 한 박 반. 8분음표가 서두르지 않게.', 'D4~A4'),
+  forFlute('jingle', 2, 'A4 → D4로 내려올 때 손가락을 동시에 정확히.', 'D4~A4'),
+  forFlute('moon', 7, '가운데 부분에서 낮은 D·E·F♯를 써요. 낮은 음은 숨을 느리게.', 'D4~B4'),
+];
+
+const ALL = [...BASICS, ...SONGS, ...FLUTE_BASICS, ...FLUTE_SONGS];
 export const songById = (id: string) => ALL.find((s) => s.id === id);
 
 const DUR: Record<string, number> = { w: 96, h: 48, q: 24, e: 12, s: 6 };
 
-export function parseSong(text: string): BuiltNote[] {
+export function parseSong(text: string, breakAt = 71): BuiltNote[] {
   const out: BuiltNote[] = [];
   let prev: Pitch | null = null;
   for (const tok of text.split(/\s+/)) {
@@ -73,14 +119,14 @@ export function parseSong(text: string): BuiltNote[] {
     const m = /^([A-G])(#|b)?(\d)$/.exec(n);
     if (!m) throw new Error(`음을 모르겠어요: ${tok}`);
     const p: Pitch = { d: dOf(m[1], Number(m[3])), alter: m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0 };
-    out.push({ p, dur, brk: isBreak(prev, p) });
+    out.push({ p, dur, brk: isBreak(prev, p, breakAt) });
     prev = p;
   }
   return out;
 }
 
-export function buildSong(s: Song, tempo = s.tempo): Built & { title: string } {
-  const notes = parseSong(s.text);
+export function buildSong(s: Song, tempo = s.tempo, breakAt = 71): Built & { title: string } {
+  const notes = parseSong(s.text, breakAt);
   const total = notes.reduce((a, n) => a + n.dur, 0);
   if (total % (4 * DIV) !== 0) throw new Error(`${s.title}: 마디가 맞지 않아요 (${total / DIV}박)`);
   const b = toMusicXML({ title: s.title, key: keyById(s.key), tempo, composer: '전래·민요' }, notes);

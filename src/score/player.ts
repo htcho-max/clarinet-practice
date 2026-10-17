@@ -1,8 +1,8 @@
 import { resumeAudio } from '../audio/context';
-import { reedWave } from '../audio/timbre';
+import { waveFor } from '../audio/timbre';
 import { midiToFreq, getTranspose } from '../audio/notes';
 import type { ParsedScore, ScoreNote } from './parse';
-import { loadClarinetSamples, scheduleClarinetNote } from '../audio/clarinetSampler';
+import { loadSamples, scheduleSampleNote } from '../audio/sampler';
 
 export type Voice = 'sample' | 'synth';
 
@@ -51,7 +51,7 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
   return { events, clicks, total: acc * q, acc: accEv };
 }
 
-/** 클라리넷 소리로 재생 (실음으로 옮겨서). stop() 을 돌려줌 */
+/** 악기 소리로 재생 (실음으로 옮겨서). stop() 을 돌려줌 */
 export class ScorePlayer {
   private nodes: AudioScheduledSourceNode[] = [];
   private timers: ReturnType<typeof setTimeout>[] = [];
@@ -72,13 +72,13 @@ export class ScorePlayer {
     const ctx = await resumeAudio();
     if (gen !== this.gen) return;
     this.ctx = ctx;
-    // 실제 클라리넷 샘플 (못 불러오면 합성음으로)
-    const useSample = (opts.voice ?? 'sample') === 'sample' && (await loadClarinetSamples(ctx));
+    // 실제 악기 샘플 (못 불러오면 합성음으로)
+    const useSample = (opts.voice ?? 'sample') === 'sample' && (await loadSamples(ctx));
     if (gen !== this.gen) return;
     this.playing = true;
     this.usedSample = useSample;
     const t0 = ctx.currentTime + 0.15;
-    const wave = reedWave(ctx);
+    const wave = waveFor(ctx);
     const master = ctx.createGain();
     master.gain.value = opts.volume ?? 0.5;
     const lp = ctx.createBiquadFilter();
@@ -95,7 +95,7 @@ export class ScorePlayer {
         const a = t0 + e.time;
         const m = e.note.midi + (e.shift ?? 0);
         if (e.inst === 'piano') { this.nodes.push(...pianoNote(ctx, accGain, midiToFreq(m, opts.a4), a, e.dur)); continue; }
-        if (useSample) { const n = scheduleClarinetNote(ctx, accGain, m, a, e.dur * 0.98, opts.a4, 0.8); if (n) { this.nodes.push(n); continue; } }
+        if (useSample) { const n = scheduleSampleNote(ctx, accGain, m, a, e.dur * 0.98, opts.a4, 0.8); if (n) { this.nodes.push(n); continue; } }
         this.nodes.push(...pianoNote(ctx, accGain, midiToFreq(m, opts.a4), a, e.dur));
       }
     }
@@ -107,7 +107,7 @@ export class ScorePlayer {
       const m = e.note.midi + (e.shift ?? 0);
       if (useSample) {
         // 다음 음과 살짝 겹치게 (레가토)
-        const n = scheduleClarinetNote(ctx, master, m, a0, e.dur * 0.98, opts.a4, 0.9);
+        const n = scheduleSampleNote(ctx, master, m, a0, e.dur * 0.98, opts.a4, 0.9);
         if (n) { this.nodes.push(n); continue; }
       }
       const osc = ctx.createOscillator();

@@ -22,11 +22,11 @@ export default defineConfig(({ mode }) => ({
       // 악보 표시 라이브러리(약 1.5MB)도 오프라인에서 쓰도록 캐시
       // 새 서비스 워커는 바로 넘겨받고(기다리다 업데이트가 막히지 않게), 새로고침은 앱이 연습 중이 아닐 때 (appUpdate.ts)
       workbox: { maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, skipWaiting: true, clientsClaim: true },
-      includeAssets: ['icon.svg', 'icon-*.png', 'apple-touch-icon.png', 'clarinet/*.mp3'],
+      includeAssets: ['icon.svg', 'icon-*.png', 'apple-touch-icon.png', 'clarinet/*.mp3', 'flute/*.mp3'],
       manifest: {
-        name: '클라리넷 연습 도우미',
-        short_name: '클라리넷',
-        description: '튜너, 운지표, 롱톤·텅잉, 악보 채점, 연습 기록',
+        name: '관악기 연습 도우미 (클라리넷·플룻)',
+        short_name: '관악 연습',
+        description: '클라리넷·플룻 튜너, 운지표, 롱톤·텅잉, 악보 채점, 연습 기록',
         theme_color: '#1f2937',
         background_color: '#111827',
         display: 'standalone',

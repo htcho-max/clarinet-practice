@@ -1,22 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { CentsGauge, centsText } from '../components/CentsGauge';
-import { FingeringDiagram } from '../components/FingeringDiagram';
+import { InstrumentDiagram } from '../components/InstrumentDiagram';
 import { usePitch } from '../state/usePitch';
 import { useSettings } from '../state/settings';
 import { useWakeLock } from '../state/wakeLock';
-import { NOTE_NAMES, NOTE_NAMES_KO, INSTRUMENTS, centsBetween, freqToNote, midiToFreq, prettyName, registerOf, soundingMidi, toSounding } from '../audio/notes';
-import { fingeringFor } from '../clarinet/fingerings';
+import { NOTE_NAMES, NOTE_NAMES_KO, INSTRUMENTS, centsBetween, freqToNote, midiToFreq, prettyName, soundingMidi, toSounding } from '../audio/notes';
+import { P, fingeringFor } from '../instruments/profiles';
 import { playTone } from '../audio/tone';
 
 type Mode = 'auto' | 'tune';
 
 /** 조율할 때 많이 쓰는 음 (악보음). 실음 B♭(합주 기준음)은 악보 C */
-const TUNE_NOTES: { midi: number; label: string; why: string }[] = [
-  { midi: 72, label: 'C5', why: '실음 B♭4 — 관악 합주의 기준음' },
-  { midi: 67, label: 'G4', why: '열린 G — 배럴(통) 길이에 민감' },
-  { midi: 71, label: 'B4', why: '브레이크 넘은 첫 음 — 아래 관절 확인' },
-  { midi: 62, label: 'D4', why: '샬뤼모 음역 확인' },
-];
+const TUNE_NOTES = P.tuneNotes;
 
 const koName = (midi: number) => NOTE_NAMES_KO[NOTE_NAMES[((midi % 12) + 12) % 12]];
 
@@ -34,7 +29,7 @@ export function Tuner() {
   const a4 = settings.a4;
   const freq = reading?.freq ?? null;
   const note = freq ? freqToNote(freq, a4) : null;
-  const inst = INSTRUMENTS.find((i) => i.id === settings.instrument)!;
+  const inst = INSTRUMENTS.find((i) => i.id === settings.instrument) ?? INSTRUMENTS[3];
 
   let cents: number | null = null;
   let mainLabel = '—';
@@ -42,7 +37,7 @@ export function Tuner() {
   if (mode === 'auto' && note) {
     cents = note.cents;
     mainLabel = prettyName(note.midi);
-    subLabel = `${koName(note.midi)} · ${registerOf(note.midi).label}`;
+    subLabel = `${koName(note.midi)} · ${P.registerOf(note.midi).label}`;
   } else if (mode === 'tune') {
     mainLabel = target.label;
     subLabel = target.why;
@@ -100,14 +95,14 @@ export function Tuner() {
             ))}
           </div>
           <div className="card" data-testid="tune-advice">
-            <b>배럴 조절</b>
+            <b>{P.tuneTitle}</b>
             <p className="small tune-advice">
               {avg === null ? '편한 세기로 2초쯤 길게 불어 보세요. 입술을 조이거나 풀지 말고 평소대로.'
                 : Math.abs(avg) <= 5 ? `맞아요 (평균 ${centsText(avg)}). 그대로 두세요.`
-                  : avg > 0 ? `평균 ${centsText(avg)} — 높아요. 배럴(마우스피스 아래 통)을 1mm쯤 빼 보세요.`
-                    : `평균 ${centsText(avg)} — 낮아요. 배럴을 조금 밀어 넣어 보세요. 다 넣었는데도 낮으면 악기를 더 데우고 다시 재요.`}
+                  : avg > 0 ? `평균 ${centsText(avg)} — ${P.tuneSharp}`
+                    : `평균 ${centsText(avg)} — ${P.tuneFlat}`}
             </p>
-            <p className="hint">뷔페 B12는 A=442Hz에 맞춰 만든 악기라 앱 기준음도 442Hz로 시작해요. 합주에서 440Hz를 쓰면 아래에서 바꾸세요. 악기가 차가우면 음이 낮아요. 1~2분 불어서 데운 뒤 조율하세요. 아래 관절(B4)이 많이 다르면 위아래 관절 사이를 조금 빼요.</p>
+            <p className="hint">{P.tuneHint}</p>
             <button className={`wide ${refOn ? 'secondary on' : 'secondary'}`} onClick={toggleRef}>
               {refOn ? `■ ${target.label} 기준음 끄기` : `▶ ${target.label} 기준음 계속 듣기`}
             </button>
@@ -117,7 +112,7 @@ export function Tuner() {
 
       {fing && (
         <div className="card tuner-fing">
-          <FingeringDiagram keys={fing.main.keys} size={86} compact />
+          <InstrumentDiagram keys={fing.main.keys} size={86} compact />
           <div>
             <b>{prettyName(fing.midi)} 운지</b>
             <p className="muted small">운지 탭에서 다른 운지와 팁을 볼 수 있어요.</p>
@@ -130,13 +125,13 @@ export function Tuner() {
       </button>
       {error && <p className="error">{error}</p>}
 
-      <div className="row-setting">
-        <span>악기</span>
-        <select value={settings.instrument} onChange={(e) => update({ instrument: e.target.value as typeof settings.instrument })} aria-label="악기">
-          {INSTRUMENTS.map((i) => <option key={i.id} value={i.id}>{i.label}</option>)}
+      {P.transposeChoices.length > 1 && <div className="row-setting">
+        <span>조</span>
+        <select value={settings.instrument} onChange={(e) => update({ instrument: e.target.value as typeof settings.instrument })} aria-label="조 (이조)">
+          {INSTRUMENTS.filter((i) => P.transposeChoices.includes(i.id)).map((i) => <option key={i.id} value={i.id}>{i.label}</option>)}
         </select>
         <span className="muted small">{inst.semis ? '음 이름은 악보음으로 보여줘요' : '실제 소리 그대로'}</span>
-      </div>
+      </div>}
       <div className="row-setting">
         <span>기준 A</span>
         <button className="mini" onClick={() => update({ a4: Math.max(438, a4 - 1) })}>−</button>

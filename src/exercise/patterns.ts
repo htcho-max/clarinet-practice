@@ -93,6 +93,26 @@ export function breakDrill(): Phrase[] {
   return [...pairs.map(([a, b]) => [a, b, a, b]), [N('C', 5)]];
 }
 
+/* ---------- 플룻 전용 ---------- */
+
+const SP: [string, number][] = [['C', 0], ['C', 1], ['D', 0], ['E', -1], ['E', 0], ['F', 0], ['F', 1], ['G', 0], ['G', 1], ['A', 0], ['B', -1], ['B', 0]];
+/** midi → 음 (C♯ F♯ G♯ 올림, E♭ B♭ 내림) */
+export const pm = (m: number): PNote => { const [L, alter] = SP[((m % 12) + 12) % 12]; return { p: { d: dOf(L, Math.floor(m / 12) - 1), alter } }; };
+
+/** 하모닉스: 낮은 음 운지 그대로 숨만 빠르게 → 옥타브, 12도 */
+export function harmonics(): Phrase[] {
+  return [...[60, 62, 64].map((f) => [pm(f), pm(f + 12), pm(f + 19), pm(f + 12)]), [pm(60)]];
+}
+/** 옥타브 슬러: 같은(비슷한) 운지로 1 → 2옥타브 */
+export function octaveSlurs(): Phrase[] {
+  return [...[64, 65, 67, 69, 71].map((m) => [pm(m), pm(m + 12), pm(m + 12), pm(m)]), [pm(67)]];
+}
+/** 플룻 넘기: C5·C♯5 (거의 다 뗀 운지) ↔ D5·E♭5 (거의 다 막은 운지) */
+export function fluteBreakDrill(): Phrase[] {
+  const pairs: [number, number][] = [[73, 74], [72, 74], [71, 74], [73, 76], [72, 75], [69, 74], [73, 74], [71, 76]];
+  return [...pairs.map(([a, b]) => [pm(a), pm(b), pm(a), pm(b)]), [pm(74)]];
+}
+
 /* ---------- 에튀드 ---------- */
 function rng(seed: number) {
   let a = seed >>> 0;

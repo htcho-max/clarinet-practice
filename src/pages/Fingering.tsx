@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FINGERINGS, fingeringFor, describeKeys } from '../clarinet/fingerings';
-import { FingeringDiagram } from '../components/FingeringDiagram';
+import { P, fingeringFor, describeKeys } from '../instruments/profiles';
+import { InstrumentDiagram, DIAGRAM_HORIZONTAL } from '../components/InstrumentDiagram';
 import { MiniStaff } from '../components/MiniStaff';
 import { CentsGauge, centsText } from '../components/CentsGauge';
-import { freqToNote, midiToFreq, prettyName, registerOf, soundingMidi, NOTE_NAMES_KO, NOTE_NAMES, INSTRUMENTS } from '../audio/notes';
+import { freqToNote, midiToFreq, prettyName, soundingMidi, NOTE_NAMES_KO, NOTE_NAMES, INSTRUMENTS } from '../audio/notes';
 import { playTone } from '../audio/tone';
 import { usePitch } from '../state/usePitch';
 import { useSettings } from '../state/settings';
@@ -11,11 +11,8 @@ import { useWakeLock } from '../state/wakeLock';
 import { useBackLayer } from '../state/back';
 
 type Range = 'low' | 'mid' | 'high';
-const RANGES: { id: Range; label: string; lo: number; hi: number }[] = [
-  { id: 'low', label: '낮은 음 E3~B♭4', lo: 52, hi: 70 },
-  { id: 'mid', label: '가운데 B4~C6', lo: 71, hi: 84 },
-  { id: 'high', label: '높은 음 (고급)', lo: 85, hi: 91 },
-];
+const RANGES = P.fgRanges;
+const FINGERINGS = P.fingerings;
 type Mode = 'chart' | 'quiz';
 
 const koName = (midi: number) => NOTE_NAMES_KO[NOTE_NAMES[((midi % 12) + 12) % 12]];
@@ -23,7 +20,7 @@ const koName = (midi: number) => NOTE_NAMES_KO[NOTE_NAMES[((midi % 12) + 12) % 1
 export function Fingering() {
   const { settings } = useSettings();
   const [range, setRange] = useState<Range>(() => { try { return (localStorage.getItem('clarinet-fg-range') as Range) || 'low'; } catch { return 'low'; } });
-  const [sel, setSel] = useState(60);
+  const [sel, setSel] = useState(P.longDefault);
   const [mode, setMode] = useState<Mode>('chart');
   const [follow, setFollow] = useState(true);
   const pitch = usePitch(settings.minDb);
@@ -65,7 +62,7 @@ export function Fingering() {
 
       {mode === 'chart' ? (
         <>
-          <p className="hint fg-model">뷔페 B12 (17키 6링 뵘식) 기준 운지예요. 칠해진 곳을 막거나 눌러요.</p>
+          <p className="hint fg-model">{P.id === 'flute' ? '야마하 YFL-222 (커버드 키, 오프셋 G, C 풋) 기준 운지예요. 칠해진 키를 눌러요.' : '뷔페 B12 (17키 6링 뵘식) 기준 운지예요. 칠해진 곳을 막거나 눌러요.'}</p>
           <div className="fg-grid" data-testid="fg-grid">
             {list.map((n) => (
               <button key={n.midi} className={`chip ${sel === n.midi ? 'on' : ''} ${heardOk?.midi === n.midi ? 'heard' : ''}`} onClick={() => setSel(n.midi)}>
@@ -103,7 +100,7 @@ function NoteCard({ midi, a4, instLabel }: { midi: number; a4: number; instLabel
   if (!n) return null;
   const all = [n.main, ...n.alts];
   const cur = all[Math.min(alt, all.length - 1)];
-  const reg = registerOf(midi);
+  const reg = P.registerOf(midi);
   const real = soundingMidi(midi);
   return (
     <div className="card fg-card" data-testid="fg-card">
@@ -115,8 +112,9 @@ function NoteCard({ midi, a4, instLabel }: { midi: number; a4: number; instLabel
           <MiniStaff notes={[midi]} width={120} />
           <button className="secondary" onClick={() => playTone(midiToFreq(midi, a4), 1.6)}>▶ 소리 듣기</button>
         </div>
-        <FingeringDiagram keys={cur.keys} size={132} />
+        {!DIAGRAM_HORIZONTAL && <InstrumentDiagram keys={cur.keys} size={132} />}
       </div>
+      {DIAGRAM_HORIZONTAL && <div className="fg-wide"><InstrumentDiagram keys={cur.keys} size={160} /></div>}
       {all.length > 1 && (
         <div className="segmented small">
           {all.map((x, i) => <button key={i} className={alt === i ? 'on' : ''} onClick={() => setAlt(i)}>{i === 0 ? '기본 운지' : `다른 운지 ${i}`}</button>)}
@@ -124,7 +122,7 @@ function NoteCard({ midi, a4, instLabel }: { midi: number; a4: number; instLabel
       )}
       <p className="small fg-desc">{describeKeys(cur.keys)}{cur.note ? ` (${cur.note})` : ''}</p>
       {n.tip && alt === 0 && <p className="hint"><b>팁</b> {n.tip}</p>}
-      {midi >= 85 && <p className="hint">알티시모 운지는 악기·리드마다 조금씩 달라요. 선생님과 확인하세요.</p>}
+      {midi >= P.fgRanges[2].lo && <p className="hint">{P.highNote}</p>}
     </div>
   );
 }
@@ -168,7 +166,7 @@ function Quiz({ lo, hi, pitch, a4 }: { lo: number; hi: number; pitch: ReturnType
         {hint && (
           <div className="fg-top">
             <div className="fg-info"><div className="note-big small-big">{prettyName(target)}</div><div className="muted">{koName(target)}</div></div>
-            <FingeringDiagram keys={n.main.keys} size={110} compact />
+            <InstrumentDiagram keys={n.main.keys} size={110} compact />
           </div>
         )}
         <div className="session-controls">

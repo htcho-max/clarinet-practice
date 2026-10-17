@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { PitchDetector } from 'pitchy';
 import { analyzeFrame } from '../src/audio/analyze';
-import { centsBetween, midiToFreq, freqToNote, setTranspose, toWritten, toSounding, soundingMidi, registerOf, prettyName } from '../src/audio/notes';
+import { centsBetween, midiToFreq, freqToNote, setTranspose, toWritten, toSounding, soundingMidi, prettyName } from '../src/audio/notes';
+import { CLARINET } from '../src/instruments/profiles';
+const registerOf = CLARINET.registerOf;
 
 const SR = 48000;
 const N = 4096;

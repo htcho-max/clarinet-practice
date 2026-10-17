@@ -2,7 +2,7 @@ import { getAudioContext } from './context';
 import { pitchTracker } from './pitchTracker';
 
 /**
- * 텅잉 분석. 혀로 리드를 끊었다 놓을 때마다 소리 크기가 잠깐 줄었다가 다시 커지는 순간(어택)을 찾아
+ * 텅잉 분석. 혀로 숨을 끊었다 놓을 때마다 소리 크기가 잠깐 줄었다가 다시 커지는 순간(어택)을 찾아
  * 메트로놈 박과 비교합니다. 시각은 모두 AudioContext 시간(초).
  */
 export interface EnvPoint { t: number; db: number }
@@ -171,15 +171,15 @@ export function scoreTonguing(onsets: number[], start: number, bpm: number, perB
   return { bpm, perBeat, expected: count, hits, missed: count - hits, extra: Math.max(0, inRange.length - hits), meanMs: mean, meanAbsMs: meanAbs, evenPct, actualBpm, grid, onsets };
 }
 
-export function tongueAdvice(r: TongueResult): string[] {
+export function tongueAdvice(r: TongueResult, extraWhat = '음이 끊어지거나 튀지 않는지 '): string[] {
   const out: string[] = [];
-  if (r.hits < r.expected * 0.6) out.push('어택을 많이 못 찾았어요. 음마다 "투-투-투" 하고 혀끝으로 리드를 분명하게 놓아 보세요. 소리가 너무 작아도 못 찾아요.');
-  if (r.meanMs !== null && Math.abs(r.meanMs) >= 25) out.push(r.meanMs > 0 ? `평균 ${Math.round(r.meanMs)}ms 늦어요. 혀를 미리 리드에 대고 준비했다가 박에 맞춰 놓아 보세요.` : `평균 ${Math.round(-r.meanMs)}ms 빨라요. 서두르지 말고 박을 기다려 보세요.`);
+  if (r.hits < r.expected * 0.6) out.push('어택을 많이 못 찾았어요. 음마다 "투-투-투" 하고 혀끝을 분명하게 떼어 보세요. 소리가 너무 작아도 못 찾아요.');
+  if (r.meanMs !== null && Math.abs(r.meanMs) >= 25) out.push(r.meanMs > 0 ? `평균 ${Math.round(r.meanMs)}ms 늦어요. 혀를 미리 대고 준비했다가 박에 맞춰 놓아 보세요.` : `평균 ${Math.round(-r.meanMs)}ms 빨라요. 서두르지 말고 박을 기다려 보세요.`);
   if (r.evenPct !== null) {
     if (r.evenPct <= 8) out.push('음 간격이 아주 고르게 나왔어요.');
     else if (r.evenPct > 15) out.push('음 간격이 고르지 않아요. 더 느린 템포에서 혀만 움직이고 턱·목은 그대로 두는 연습을 해 보세요.');
   }
   if (r.actualBpm !== null && Math.abs(r.actualBpm - r.bpm) / r.bpm >= 0.05) out.push(r.actualBpm > r.bpm ? `점점 빨라졌어요 (실제 ♩=${Math.round(r.actualBpm)}).` : `점점 느려졌어요 (실제 ♩=${Math.round(r.actualBpm)}).`);
-  if (r.extra > 2) out.push('박 사이에 어택이 더 있었어요. 음이 끊어지거나 리드가 울컥거리지 않는지 확인해 보세요.');
+  if (r.extra > 2) out.push(`박 사이에 어택이 더 있었어요. ${extraWhat}확인해 보세요.`);
   return out;
 }

@@ -1,3 +1,4 @@
+import { P } from '../instruments/profiles';
 import { useEffect, useState } from 'react';
 import { useSession, itemMs, totalMs } from '../state/session';
 import { useSettings } from '../state/settings';
@@ -31,7 +32,7 @@ const TOOL_FOR: Record<string, { tab: TabId; label: string }> = {
   review: { tab: 'metronome', label: '메트로놈 열기' },
 };
 const TOOL_MODE: Record<string, string> = { longtone: 'long', tongue: 'tongue' };
-const TUNE_TIPS = ['리드를 물에 살짝 적시고, 리가처 나사는 손으로 가볍게 조여요.', '리드 끝이 마우스피스 끝과 나란하게, 아주 조금만 아래로.', '악기를 1~2분 불어 데운 뒤 튜너의 "조율하기"로 C5(실음 B♭)를 맞춰요.'];
+const TUNE_TIPS = P.tuneTips;
 
 export function Today({ go, openSettings }: { go: (t: TabId) => void; openSettings: () => void }) {
   const { settings, update } = useSettings();
@@ -100,6 +101,7 @@ export function Today({ go, openSettings }: { go: (t: TabId) => void; openSettin
       <div>
         <div className="muted">{new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })}</div>
         <div className="stat-line"><b>{st}일</b> 연속 · 오늘 <b>{formatDuration(todaySec)}</b></div>
+        <button className="link small inst-chip" onClick={openSettings} data-testid="inst-chip">{P.name} · {P.model}</button>
       </div>
       <button className="icon-btn" onClick={openSettings} aria-label="설정">⚙</button>
     </div>
@@ -172,7 +174,7 @@ export function Today({ go, openSettings }: { go: (t: TabId) => void; openSettin
           <button className="primary wide" onClick={() => { pause(); setConfirmEnd(true); }} data-testid="session-finish">연습 마치기</button>
         ) : (
           <div className="finish">
-            <textarea placeholder="메모 (예: 롱톤 G4 12초, 브레이크 넘기 ♩=60 통과)" value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} />
+            <textarea placeholder={`메모 (예: 롱톤 ${P.id === 'flute' ? 'B4' : 'G4'} 12초, 텅잉 ♩=72 통과)`} value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} />
             <div className="session-controls">
               <button onClick={() => { setConfirmEnd(false); resume(); }}>계속하기</button>
               <button className="danger" onClick={() => { if (confirm('이번 연습을 저장하지 않고 버릴까요?')) discard(); }}>버리기</button>

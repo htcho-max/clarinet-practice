@@ -1,3 +1,4 @@
+import { P } from '../instruments/profiles';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { liveQuery } from 'dexie';
 import type { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
@@ -104,7 +105,7 @@ export function Score() {
     <section className="page score">
       <div className="card">
         <b>연습곡 · 쉬운 곡</b>
-        <p className="hint">첫 소리(왼손 세 음)부터 쉬운 곡, 브레이크 넘기, 두 옥타브 음계·에튀드, 텅잉·슬러 연습까지 앱이 악보를 만들어 줘요.</p>
+        <p className="hint">{P.exerciseIntro}</p>
         <button className="primary wide" onClick={() => setExView(true)} data-testid="open-exercises">연습곡 만들기</button>
       </div>
 
@@ -163,7 +164,7 @@ export function Score() {
         <b>악보 불러오기{filter !== 'all' && filter !== 'none' ? ` → ${folderName(filter)}` : ''}</b>
         <p className="hint">
           MusicXML 파일(.musicxml, .xml)을 고르세요. 악보는 <b>이 기기 안에만</b> 저장되고, 앱이나 GitHub에는 올라가지 않아요.
-          (교재 악보는 저작권이 있어서 개인 연습용으로만 쓰세요.) 폴더를 골라 두면 그 폴더에 들어가고, 전체일 때는 연결한 곡의 분류나 제목으로 나눠 넣어요. B♭ 클라리넷 파트 악보(악보음)를 쓰세요.
+          (교재 악보는 저작권이 있어서 개인 연습용으로만 쓰세요.) 폴더를 골라 두면 그 폴더에 들어가고, 전체일 때는 연결한 곡의 분류나 제목으로 나눠 넣어요. {P.id === 'clarinet' ? 'B♭ 클라리넷 파트 악보(악보음)를 쓰세요.' : '플룻 파트 악보를 쓰세요.'}
         </p>
         <select value={pieceForNew} onChange={(e) => setPieceForNew(e.target.value)} aria-label="연결할 곡">
           <option value="">곡 연결 안 함</option>
@@ -392,7 +393,7 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
         if (loopRef.current) playRangeRef.current(); else { highlight(null); setPlaying(false); }
       },
     });
-    setVoiceNote(voice === 'sample' && !scorePlayer.usedSample ? '클라리넷 소리를 불러오지 못해서 합성음으로 재생해요. (첫 재생은 인터넷 연결이 필요해요)' : '');
+    setVoiceNote(voice === 'sample' && !scorePlayer.usedSample ? `${P.sampleName} 소리를 불러오지 못해서 합성음으로 재생해요. (첫 재생은 인터넷 연결이 필요해요)` : '');
   }
   const playRangeRef = useRef(playRange);
   playRangeRef.current = playRange;
@@ -540,7 +541,7 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
             </div>
           )}
           {(step?.tip ?? ex.tip) && <p className="hint"><b>팁</b> {step?.tip ?? ex.tip}</p>}
-          {(ex.breakKeys?.length ?? 0) > 0 && <p className="hint">브레이크를 넘는 음 {ex.breakKeys.length}개는 채점 뒤에 따로 보여줘요.</p>}
+          {(ex.breakKeys?.length ?? 0) > 0 && <p className="hint">{P.breakNotes} {ex.breakKeys.length}개는 채점 뒤에 따로 보여줘요.</p>}
           <div className="session-controls">
             <button onClick={rebuild} disabled={regenBusy || playing || listening} title="연습곡 화면에서 바꾼 리듬·아티큘레이션 설정으로 다시 만들기">설정 다시 적용</button>
             {ex.spec.pattern === 'etude' && <button onClick={regenerate} disabled={regenBusy || playing || listening} data-testid="ex-regen">다른 곡 만들기</button>}
@@ -580,7 +581,7 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
           <label><input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} /> 반복</label>
         </div>
         <div className="segmented small">
-          <button className={voice === 'sample' ? 'on' : ''} onClick={() => setVoice('sample')} disabled={playing}>클라리넷 녹음</button>
+          <button className={voice === 'sample' ? 'on' : ''} onClick={() => setVoice('sample')} disabled={playing}>{P.sampleName} 녹음</button>
           <button className={voice === 'synth' ? 'on' : ''} onClick={() => setVoice('synth')} disabled={playing}>합성음</button>
         </div>
         {hasAcc && (
@@ -659,8 +660,8 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
           {saved && <p className="small muted" data-testid="run-saved">✓ {saved}</p>}
           {shiftRes.length > 0 && (
             <p className="small" data-testid="shift-stats">
-              브레이크 넘는 음 {shiftOk.length}/{shiftRes.length}개 맞음{shiftMean !== null && <> · 평균 <b className={tone(shiftMean)}>±{Math.round(shiftMean)}센트</b></>}
-              {shiftMean !== null && shiftMean > 15 ? ' — 브레이크 위 음(B4·C5)은 낮게 나기 쉬워요. 숨을 빠르게, 입술은 그대로.' : ''}
+              {P.breakNotes} {shiftOk.length}/{shiftRes.length}개 맞음{shiftMean !== null && <> · 평균 <b className={tone(shiftMean)}>±{Math.round(shiftMean)}센트</b></>}
+              {shiftMean !== null && shiftMean > 15 ? ` — ${P.breakAdvice}` : ''}
             </p>
           )}
           <b>마디별 {view === 'rhythm' && rhythm ? '박자 (ms)' : '음정 (센트)'}</b>
@@ -729,7 +730,7 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
         )}
         <input ref={accFile} type="file" accept=".musicxml,.xml" hidden onChange={(e) => e.target.files?.[0] && attachAcc(e.target.files[0])} data-testid="acc-file" />
         {accError && <p className="error">{accError}</p>}
-        <p className="hint">{hasAcc ? `반주 ${accParts.length}파트 · 피아노 파트는 피아노 소리, 그 밖은 클라리넷 소리로 들려줘요.` : '합주의 다른 파트나 피아노 반주 악보를 붙이면 같이 들으며 연습할 수 있어요. 마디 번호가 같은 악보여야 해요.'}</p>
+        <p className="hint">{hasAcc ? `반주 ${accParts.length}파트 · 피아노 파트는 피아노 소리, 그 밖은 ${P.sampleName} 소리로 들려줘요.` : '합주의 다른 파트나 피아노 반주 악보를 붙이면 같이 들으며 연습할 수 있어요. 마디 번호가 같은 악보여야 해요.'}</p>
       </div>
 
       </div>

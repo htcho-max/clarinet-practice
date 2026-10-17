@@ -1,6 +1,8 @@
 import { useSettings } from '../state/settings';
 import { DEFAULT_ROUTINE } from '../data/settings';
 import { INSTRUMENTS, type Instrument } from '../audio/notes';
+import { INST, INSTRUMENT_IDS, switchInstrument } from '../instruments/current';
+import { P, PROFILES } from '../instruments/profiles';
 import { useEffect, useRef, useState } from 'react';
 import { saveBackup, restoreBackup, storageInfo } from '../data/backup';
 import { checkForUpdate } from '../state/appUpdate';
@@ -34,13 +36,26 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
       <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="설정">
         <div className="card-head"><b>설정</b><button className="mini" onClick={onClose}>닫기</button></div>
 
-        <div className="row-setting">
-          <span>악기</span>
-          <select value={settings.instrument} onChange={(e) => update({ instrument: e.target.value as Instrument })} aria-label="악기" data-testid="instrument">
-            {INSTRUMENTS.map((i) => <option key={i.id} value={i.id}>{i.label}</option>)}
-          </select>
+        <b>악기</b>
+        <div className="segmented" data-testid="instrument-switch">
+          {INSTRUMENT_IDS.map((id) => (
+            <button key={id} className={INST === id ? 'on' : ''} data-testid={`inst-${id}`}
+              onClick={() => { if (id !== INST && confirm(`${PROFILES[id].name}(으)로 바꿀까요? 기록·악보·설정은 악기마다 따로 저장돼요. 다시 바꾸면 그대로 돌아와요.`)) switchInstrument(id); }}>
+              {PROFILES[id].name} <small className="muted">{PROFILES[id].model}</small>
+            </button>
+          ))}
         </div>
-        <p className="hint">앱의 음 이름·운지·채점은 모두 악보음(내 파트 악보에 적힌 음)으로 해요. 기준음·드론·악보 듣기 소리는 실제 음높이로 바꿔서 내요.</p>
+        {P.transposeChoices.length > 1 && (
+          <>
+            <div className="row-setting">
+              <span>조</span>
+              <select value={settings.instrument} onChange={(e) => update({ instrument: e.target.value as Instrument })} aria-label="조 (이조)" data-testid="instrument">
+                {INSTRUMENTS.filter((i) => P.transposeChoices.includes(i.id)).map((i) => <option key={i.id} value={i.id}>{i.label}</option>)}
+              </select>
+            </div>
+            <p className="hint">앱의 음 이름·운지·채점은 모두 악보음(내 파트 악보에 적힌 음)으로 해요. 기준음·드론·악보 듣기 소리는 실제 음높이로 바꿔서 내요.</p>
+          </>
+        )}
         <div className="row-setting">
           <span>기준 A</span>
           <button className="mini" onClick={() => update({ a4: Math.max(438, settings.a4 - 1) })}>−</button>

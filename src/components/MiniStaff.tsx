@@ -10,12 +10,15 @@ export function spell(midi: number): { letter: string; alter: number; octave: nu
 }
 
 const GAP = 8; // 줄 간격
-const TOP = 30; // 맨 윗줄(F5) y
 
 export function MiniStaff({ notes, width = 160, highlight }: { notes: number[]; width?: number; highlight?: number }) {
+  // 높은 음(덧줄 많은 플룻 3옥타브)이 있으면 위로 늘림
+  const dOfMidi = (m: number) => { const s = spell(m); return s.octave * 7 + LETTERS.indexOf(s.letter); };
+  const dMax = Math.max(42, ...notes.map(dOfMidi));
+  const TOP = 30 + (dMax - 42) * (GAP / 2); // 맨 윗줄(F5) y
   const lineY = (i: number) => TOP + i * GAP; // 0 = F5 ... 4 = E4
   const yOf = (d: number) => lineY(4) - (d - 30) * (GAP / 2); // E4 = d 30
-  const h = 112;
+  const h = 112 + (TOP - 30);
   const x0 = 44, step = Math.max(26, (width - x0 - 14) / Math.max(1, notes.length));
   return (
     <svg className="mini-staff" viewBox={`0 0 ${width} ${h}`} width={width} height={h} role="img"

@@ -37,3 +37,14 @@ write('longtone.wav', 8.5, (t) => (t >= 1 && t < 7 ? f(W(67), 5) : null), (t) =>
 
 // 텅잉: 0.25초마다 30ms 끊김
 write('tongue.wav', 12, () => f(W(72)), (t) => ((t % 0.25) < 0.03 ? 0 : 1));
+
+// 플룻: 실음 A4 +20센트 (플룻은 이조 없음), 기음이 강한 음색
+{
+  const n = Math.floor(sr * 10), buf = Buffer.alloc(44 + n * 2);
+  buf.write('RIFF', 0); buf.writeUInt32LE(36 + n * 2, 4); buf.write('WAVE', 8); buf.write('fmt ', 12);
+  buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22); buf.writeUInt32LE(sr, 24);
+  buf.writeUInt32LE(sr * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34); buf.write('data', 36); buf.writeUInt32LE(n * 2, 40);
+  const fr = f(69, 20), HF = [1, 0.25, 0.1, 0.05];
+  for (let i = 0; i < n; i++) { let v = 0; HF.forEach((a, k) => { v += a * Math.sin(2 * Math.PI * fr * (k + 1) * i / sr); }); v += (Math.random() - 0.5) * 0.02; buf.writeInt16LE(Math.round(v * 0.2 * 32767), 44 + i * 2); }
+  writeFileSync('scripts/fl_a4.wav', buf);
+}

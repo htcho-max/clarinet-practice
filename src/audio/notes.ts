@@ -27,17 +27,6 @@ export const toSounding = (freq: number) => freq * Math.pow(2, -transposeSemis /
 /** 악보음 midi → 실음 midi */
 export const soundingMidi = (writtenMidi: number) => writtenMidi - transposeSemis;
 
-/** 클라리넷 음역 이름 (악보음 기준) */
-export function registerOf(midi: number): { id: 'chalumeau' | 'throat' | 'clarion' | 'altissimo'; label: string } {
-  if (midi <= 66) return { id: 'chalumeau', label: '샬뤼모 (낮은 음역)' };
-  if (midi <= 70) return { id: 'throat', label: '스로트 (목 음역)' };
-  if (midi <= 84) return { id: 'clarion', label: '클라리온 (가운데 음역)' };
-  return { id: 'altissimo', label: '알티시모 (높은 음역)' };
-}
-/** 클라리넷 악보음 음역: E3 ~ C6 (입문은 G6 까지 안 씀) */
-export const CLARINET_LOW = 52;
-export const CLARINET_HIGH = 93;
-
 export function midiToFreq(midi: number, a4 = 440): number {
   return a4 * Math.pow(2, (midi - 69) / 12);
 }

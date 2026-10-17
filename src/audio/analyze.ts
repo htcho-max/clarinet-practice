@@ -1,8 +1,11 @@
 import { PitchDetector } from 'pitchy';
 import { rmsDb } from './smoothing';
+import { P } from '../instruments/profiles';
 
-export const MIN_FREQ = 130; // 클라리넷 가장 낮은 실음 D3(147Hz) 아래 여유
-export const MAX_FREQ = 1500; // 알티시모 실음 F6(1397Hz) 위 여유
+
+/** 악기 음역에 맞춘 감지 범위 (실음 Hz) */
+export const MIN_FREQ = P.minFreq;
+export const MAX_FREQ = P.maxFreq;
 export const MIN_CLARITY = 0.9;
 
 export interface FrameResult { freq: number | null; clarity: number; db: number }

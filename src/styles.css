@@ -392,3 +392,11 @@ button.mini.on { border-color: var(--accent); color: var(--accent); font-weight:
   .page.tone > * { grid-column: 1; }
   .page.tone > .longtone-live, .page.tone > [data-testid=lt-result], .page.tone > .tongue-live, .page.tone > [data-testid=tongue-result] { grid-column: 2; }
 }
+
+/* 플룻: 가로 운지 그림은 카드 폭에 맞춤 */
+.fg-wide { display: flex; justify-content: center; }
+.fg-wide svg.fingering, .quiz .fingering.flute, .tuner-fing .fingering.flute { width: 100%; max-width: 440px; height: auto; }
+.tuner-fing:has(.fingering.flute) { flex-direction: column; align-items: stretch; }
+@media (min-width: 720px) { .fg-card .fingering.flute { width: 100%; } }
+
+.inst-chip { color: var(--accent); margin-top: 2px; }

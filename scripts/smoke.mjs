@@ -46,10 +46,10 @@ try {
     await page.screenshot({ path: 'scripts/shot-tune.png', fullPage: true });
     // 악기 바꾸기 → 실음 그대로
     await page.getByRole('button', { name: '자동' }).click();
-    await page.getByLabel('악기').selectOption('C');
+    await page.getByLabel('조 (이조)').selectOption('C');
     await page.waitForTimeout(1500);
     ok((await page.getByTestId('note').textContent()) === 'B♭4', `악기를 실음으로 → B♭4 (${await page.getByTestId('note').textContent()})`);
-    await page.getByLabel('악기').selectOption('Bb');
+    await page.getByLabel('조 (이조)').selectOption('Bb');
     await page.getByTestId('mic').click();
 
     // 운지표
@@ -339,6 +339,74 @@ try {
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
     await browser.close();
   }
+  // ── 7. 플룻 (야마하 YFL-222): 설정에서 악기 바꾸기 → 기록 따로, 이조 없음 ──
+  {
+    const { browser, page, errors } = await launch('fl_a4.wav');
+    await page.getByTestId('session-start').click();
+    await page.waitForTimeout(2300);
+    await page.getByTestId('session-finish').click();
+    await page.getByTestId('session-save').click();
+    await page.waitForTimeout(500);
+    await page.getByRole('button', { name: '설정' }).click();
+    page.once('dialog', (d) => d.accept());
+    await Promise.all([page.waitForEvent('load'), page.getByTestId('inst-flute').click()]);
+    await page.waitForTimeout(800);
+    ok(/플룻 · 야마하 YFL-222/.test(await page.getByTestId('inst-chip').textContent()), '플룻으로 바꾸기');
+    ok(/0초/.test(await page.locator('.stat-line').textContent()), '플룻 기록은 따로 (오늘 0초)');
+    ok((await page.locator('title').textContent()) === '플룻 연습 도우미', '제목 플룻');
+    await tab(page, 'tuner');
+    ok(!(await page.getByLabel('조 (이조)').isVisible().catch(() => false)), '플룻은 이조 설정 없음');
+    await page.getByTestId('mic').click();
+    await page.waitForTimeout(2500);
+    ok((await page.getByTestId('note').textContent()) === 'A4', `플룻 튜너 A4 (이조 없음) (${await page.getByTestId('note').textContent()})`);
+    const c = num(await page.getByTestId('cents').textContent());
+    ok(Math.abs(c - 20) <= 3, `플룻 튜너 센트 ${c} (기대 +20)`);
+    await page.getByTestId('tune-mode').click();
+    await page.waitForTimeout(2500);
+    const adv = await page.getByTestId('tune-advice').textContent();
+    ok(/헤드조인트/.test(adv), `조율하기: 헤드조인트 안내 (${adv.slice(0, 30)})`);
+    await page.getByTestId('mic').click();
+    await tab(page, 'fingering');
+    ok((await page.getByTestId('fg-grid').locator('.chip').count()) === 14, `플룻 1옥타브 C4~C♯5 14음 (${await page.getByTestId('fg-grid').locator('.chip').count()})`);
+    ok(/YFL-222/.test(await page.locator('.fg-model').textContent()), '운지 기준 YFL-222');
+    await page.getByRole('button', { name: '마이크 켜기' }).click();
+    await page.waitForTimeout(2500);
+    ok((await page.getByTestId('fg-heard').textContent()) === 'A4', '플룻 불어 보기 A4');
+    ok(await seen(page.getByTestId('fg-card').locator('svg.fingering.flute')), '플룻 가로 운지 그림');
+    ok((await page.getByTestId('fg-card').locator('.fg-on').count()) === 4, `A4 운지: 엄지 B + 검지·중지 + E♭ 키 = 4 (${await page.getByTestId('fg-card').locator('.fg-on').count()})`);
+    await page.screenshot({ path: 'scripts/shot-flute-fingering.png', fullPage: true });
+    await page.getByRole('button', { name: '마이크 끄기' }).click();
+    await tab(page, 'tone');
+    await page.getByTestId('mode-long').click();
+    ok(/\bon\b/.test(await page.locator('.card').filter({ hasText: '음 고르기' }).getByRole('button', { name: 'B4', exact: true }).getAttribute('class')), '플룻 롱톤 기본 음 B4');
+    await tab(page, 'score');
+    await page.getByTestId('open-exercises').click();
+    await page.getByTestId('ex-A1').click();
+    await page.getByTestId('exercise-card').waitFor({ timeout: 5000 });
+    await page.waitForTimeout(1500);
+    ok(/B4 A4 G4/.test(await page.locator('.score-title').textContent()), '플룻 첫 소리 (B A G)');
+    await page.getByTestId('play-bpm').fill('200');
+    await page.getByTestId('play-toggle').click();
+    await page.waitForTimeout(2500);
+    ok(!/불러오지 못해서/.test(await page.locator('.page').textContent()), '플룻 샘플 불러오기');
+    await page.getByTestId('play-toggle').click().catch(() => {});
+    await page.screenshot({ path: 'scripts/shot-flute-exercise.png', fullPage: true });
+    await page.getByRole('button', { name: '◀ 목록' }).click();
+    await page.getByTestId('ex-D3').click();
+    await page.getByTestId('exercise-card').waitFor({ timeout: 5000 });
+    ok(/C♯5↔D5를 넘는 음 \d+개/.test(await page.getByTestId('exercise-card').textContent()), '플룻 C♯5↔D5 넘는 음 표시');
+    // 클라리넷으로 돌아가면 기록 그대로
+    await tab(page, 'today');
+    await page.getByRole('button', { name: '설정' }).click();
+    page.once('dialog', (d) => d.accept());
+    await Promise.all([page.waitForEvent('load'), page.getByTestId('inst-clarinet').click()]);
+    await page.waitForTimeout(800);
+    const back = `${await page.getByTestId('inst-chip').textContent()} / ${await page.locator('.stat-line').textContent()}`;
+    ok(/클라리넷/.test(back) && !/오늘 0초/.test(back), `클라리넷으로 돌아오면 기록 그대로 (${back})`);
+    ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
+    await browser.close();
+  }
+
   // ── 6. 태블릿 가로 (1180×820) ──
   {
     const { browser, page, errors } = await launch('bb466.wav');

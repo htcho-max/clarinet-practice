@@ -137,3 +137,38 @@ describe('롱톤: 소리 크기에 -Infinity 가 섞여도', () => {
     expect(Number.isFinite(r.dbRange)).toBe(true);
   });
 });
+
+import { FLUTE_FINGERINGS } from '../src/flute/fingerings';
+import { FLUTE_DIAGRAM_KEYS } from '../src/components/FluteDiagram';
+import { FLUTE, CLARINET } from '../src/instruments/profiles';
+describe('플룻 운지표 (YFL-222)', () => {
+  it('C4~C7 반음마다 하나씩', () => {
+    const ms = FLUTE_FINGERINGS.map((f) => f.midi);
+    expect(ms[0]).toBe(60);
+    for (let i = 1; i < ms.length; i++) expect(ms[i]).toBe(ms[i - 1] + 1);
+    expect(ms[ms.length - 1]).toBe(96);
+  });
+  it('2옥타브 E5~C♯6 은 1옥타브와 같은 운지', () => {
+    for (let m = 76; m <= 85; m++) expect(FLUTE_FINGERINGS.find((x) => x.midi === m)!.main.keys).toEqual(FLUTE_FINGERINGS.find((x) => x.midi === m - 12)!.main.keys);
+  });
+  it('알려진 운지', () => {
+    const k = (m: number) => [...FLUTE_FINGERINGS.find((x) => x.midi === m)!.main.keys].sort();
+    expect(k(71)).toEqual(['eb', 'l1', 'thumbB']); // B4
+    expect(k(72)).toEqual(['eb', 'l1']); // C5
+    expect(k(73)).toEqual(['eb']); // C♯5
+    expect(k(62)).toEqual(['l1', 'l2', 'l3', 'r1', 'r2', 'r3', 'thumbB']); // D4: E♭ 키 뗌
+    expect(k(74)).not.toContain('l1'); // D5: 왼손 검지 뗌
+    expect(k(60)).toContain('c'); // C 풋
+  });
+  it('그림에 모든 키가 있음', () => {
+    const all = new Set(FLUTE_DIAGRAM_KEYS);
+    for (const f of FLUTE_FINGERINGS) for (const fg of [f.main, ...f.alts]) for (const key of fg.keys) expect(all.has(key)).toBe(true);
+  });
+  it('프로필: 이조 없음, 음역, 감지 범위', () => {
+    expect(FLUTE.transposeChoices).toEqual(['C']);
+    expect(FLUTE.maxFreq).toBeGreaterThan(2093); // C7
+    expect(CLARINET.minFreq).toBeLessThan(147); // 실음 D3
+    for (const p of [FLUTE, CLARINET]) for (const r of p.fgRanges) expect(p.fingerings.some((f) => f.midi === r.lo) && p.fingerings.some((f) => f.midi === r.hi)).toBe(true);
+    for (const p of [FLUTE, CLARINET]) for (const m of [...p.longNotes, ...p.tuneNotes.map((t) => t.midi)]) expect(p.fingerings.some((f) => f.midi === m)).toBe(true);
+  });
+});

@@ -1,4 +1,5 @@
 import { type Key, scalePitch, dOf } from './theory';
+import { INST, type InstrumentId } from '../instruments/current';
 import type { ArtPattern } from './build';
 import type { Phrase, PNote } from './patterns';
 
@@ -8,12 +9,14 @@ import type { Phrase, PNote } from './patterns';
  */
 export type ArtBaseId = 'five' | 'scale' | 'arp' | 'break';
 export const ART_BASES: { id: ArtBaseId; label: string; tip: string }[] = [
-  { id: 'five', label: '다섯 음 (도~솔)', tip: '손가락은 쉬운 다섯 음. 혀와 숨에만 집중해요.' },
+  { id: 'five', label: '다섯 음', tip: '손가락은 쉬운 다섯 음. 혀와 숨에만 집중해요.' },
   { id: 'scale', label: '한 옥타브 음계', tip: '음계는 익숙하니 텅잉 모양을 고르게 하는 데 집중해요.' },
   { id: 'arp', label: '분산화음', tip: '음이 뛰어도 숨은 끊지 말고 혀로만 나눠요.' },
-  { id: 'break', label: '브레이크 넘기', tip: '오른손을 내려 둔 채 스로트 음을 불면 넘기 쉬워요.' },
+  { id: 'break', label: '넘기 (브레이크·옥타브)', tip: '클라리넷은 오른손을 내려 둔 채 스로트 음을, 플룻은 C♯5 → D5에서 손가락을 한꺼번에.' },
 ];
-export const ART_KEYS = ['C', 'F', 'G'];
+/** 악기별 조 (플룻은 다섯 음이 넘기 없이 되는 조) */
+export const artKeysFor = (inst: InstrumentId) => (inst === 'flute' ? ['F', 'D', 'C'] : ['C', 'F', 'G']);
+export const ART_KEYS = artKeysFor(INST);
 
 /** 기본 악구의 온음계 위치 (시작 음 = 0) */
 const DEGREES: Record<ArtBaseId, { beats: number[][]; final: number }> = {
@@ -23,15 +26,24 @@ const DEGREES: Record<ArtBaseId, { beats: number[][]; final: number }> = {
   break: { beats: [[0, 1], [2, 3], [4, 3], [2, 1], [0, 2], [4, 2], [3, 1], [2, 1]], final: 0 },
 };
 /** 시작 음 (악보음). 브레이크 악구는 스로트 음 근처에서 시작해 클라리온으로 넘어감 */
-const START: Record<ArtBaseId, Record<string, number>> = {
-  five: { C: dOf('C', 4), F: dOf('F', 3), G: dOf('G', 3) },
-  scale: { C: dOf('C', 4), F: dOf('F', 3), G: dOf('G', 3) },
-  arp: { C: dOf('C', 4), F: dOf('F', 3), G: dOf('G', 3) },
-  break: { C: dOf('G', 4), F: dOf('F', 4), G: dOf('G', 4) },
+const START: Record<InstrumentId, Record<ArtBaseId, Record<string, number>>> = {
+  clarinet: {
+    five: { C: dOf('C', 4), F: dOf('F', 3), G: dOf('G', 3) },
+    scale: { C: dOf('C', 4), F: dOf('F', 3), G: dOf('G', 3) },
+    arp: { C: dOf('C', 4), F: dOf('F', 3), G: dOf('G', 3) },
+    break: { C: dOf('G', 4), F: dOf('F', 4), G: dOf('G', 4) },
+  },
+  // 플룻: 넘기 악구는 A4 에서 시작해 C♯5/C5 → D5 를 넘음
+  flute: {
+    five: { C: dOf('C', 4), F: dOf('F', 4), D: dOf('D', 4) },
+    scale: { C: dOf('C', 4), F: dOf('F', 4), D: dOf('D', 4) },
+    arp: { C: dOf('C', 4), F: dOf('F', 4), D: dOf('D', 4) },
+    break: { C: dOf('A', 4), F: dOf('A', 4), D: dOf('A', 4) },
+  },
 };
 
-export function artBase(key: Key, base: ArtBaseId): Phrase[] {
-  const t = START[base][key.id] ?? key.startD;
+export function artBase(key: Key, base: ArtBaseId, inst: InstrumentId = INST): Phrase[] {
+  const t = START[inst][base][key.id] ?? key.startD;
   const spec = DEGREES[base];
   const flat = spec.beats.flat();
   const notes: PNote[] = flat.map((g, i) => ({ p: scalePitch(key, t + g, i > 0 && g < flat[i - 1] ? -1 : 1) }));
@@ -40,7 +52,7 @@ export function artBase(key: Key, base: ArtBaseId): Phrase[] {
 
 export interface ArtVariant { id: string; label: string; pattern: ArtPattern; tip: string }
 export const ART_VARIANTS: ArtVariant[] = [
-  { id: '1', label: '모두 텅잉', pattern: { groups: [1] }, tip: '"투-투-투". 혀끝이 리드 끝에 살짝 닿았다 떨어지게. 숨은 계속 흘려요.' },
+  { id: '1', label: '모두 텅잉', pattern: { groups: [1] }, tip: '"투-투-투". 혀끝을 살짝 댔다 떼요 (클라리넷은 리드 끝, 플룻은 윗니 뒤). 숨은 계속 흘려요.' },
   { id: '2', label: '2음 슬러', pattern: { groups: [2] }, tip: '슬러 첫 음만 혀로 시작하고 둘째 음은 손가락만 움직여요.' },
   { id: '3', label: '4음 슬러', pattern: { groups: [4] }, tip: '한 숨에 이어서. 손가락을 동시에 정확히 움직여야 사이 소리가 안 나요.' },
   { id: '4', label: '8음 슬러', pattern: { groups: [8] }, tip: '숨 속도를 일정하게 유지해 끝 음까지 같은 소리로.' },

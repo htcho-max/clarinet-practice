@@ -1,5 +1,5 @@
 import { resumeAudio } from './context';
-import { reedWave } from './timbre';
+import { waveFor } from './timbre';
 import { toSounding } from './notes';
 
 /** freq 는 악보음 주파수 (실음으로 바꿔서 냄) */
@@ -23,7 +23,7 @@ export class Drone {
     lp.type = 'lowpass';
     lp.frequency.value = 1800;
     lp.connect(master).connect(ctx.destination);
-    const wave = reedWave(ctx);
+    const wave = waveFor(ctx);
     for (const v of voices) {
       const osc = ctx.createOscillator();
       osc.setPeriodicWave(wave);
@@ -60,12 +60,3 @@ export class Drone {
 
 export const drone = new Drone();
 
-/** 조성 프리셋 (악보음 기준. B♭ 클라리넷의 C장조 = 실음 B♭장조, 관악 합주에서 가장 흔한 조) */
-export interface DronePreset { id: string; label: string; rootMidi: number }
-export const DRONE_PRESETS: DronePreset[] = [
-  { id: 'C', label: 'C장조', rootMidi: 60 },
-  { id: 'F', label: 'F장조', rootMidi: 53 },
-  { id: 'G', label: 'G장조', rootMidi: 55 },
-  { id: 'D', label: 'D장조', rootMidi: 62 },
-  { id: 'Am', label: 'A단조', rootMidi: 57 },
-];

@@ -1,10 +1,10 @@
-import TUNING from './clarinetSamples.json';
+import { P } from '../instruments/profiles';
 
 /**
- * 실제 클라리넷 녹음 샘플 (public/clarinet, NOTICE.txt 참고). 처음 쓸 때 한 번 불러옴.
+ * 실제 악기 녹음 샘플 (public/<악기>/, NOTICE.txt 참고). 처음 쓸 때 한 번 불러옴.
  * 샘플 이름과 midi 는 실음(콘서트 피치) 기준. [midi, 샘플 자체 음정 오차(센트)]
  */
-const SAMPLES = Object.entries(TUNING as unknown as Record<string, [number, number]>)
+const SAMPLES = Object.entries(P.sampleTuning)
   .map(([name, [midi, cents]]) => ({ name, midi, cents }))
   .sort((a, b) => a.midi - b.midi);
 
@@ -14,11 +14,11 @@ let loading: Promise<boolean> | null = null;
 export function samplesReady() { return buffers.size === SAMPLES.length; }
 export const SAMPLE_NAMES = SAMPLES.map((s) => s.name);
 
-export function loadClarinetSamples(ctx: BaseAudioContext): Promise<boolean> {
+export function loadSamples(ctx: BaseAudioContext): Promise<boolean> {
   if (!loading) {
     const base = import.meta.env.BASE_URL;
     loading = Promise.all(SAMPLES.map(async (s) => {
-      const res = await fetch(`${base}clarinet/${s.name}.mp3`);
+      const res = await fetch(`${base}${P.sampleDir}/${s.name}.mp3`);
       if (!res.ok) throw new Error(s.name);
       buffers.set(s.name, await ctx.decodeAudioData(await res.arrayBuffer()));
     })).then(() => true, () => { loading = null; return false; });
@@ -37,7 +37,7 @@ export function pickSampleName(midi: number, a4 = 440): { name: string; rate: nu
 const ONSET = 0.025; // 샘플 앞의 무음
 
 /** 한 음 예약 (midi 는 실음). 끝나는 노드를 돌려줌 */
-export function scheduleClarinetNote(
+export function scheduleSampleNote(
   ctx: BaseAudioContext, dest: AudioNode, midi: number, when: number, dur: number, a4 = 440, gain = 1,
 ): AudioBufferSourceNode | null {
   const pick = pickSampleName(midi, a4);
