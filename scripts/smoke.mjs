@@ -177,6 +177,7 @@ try {
     ok(/녹음/.test(await page.getByTestId('run-saved').textContent().catch(() => '')), '채점하면 연습 기록과 녹음 저장');
     await page.screenshot({ path: 'scripts/shot-score.png', fullPage: true });
     // 악보 듣기 (클라리넷 샘플)
+    ok(await page.getByTestId('expressive').isChecked(), '셈여림·아티큘레이션 살리기 기본 켜짐');
     await page.getByTestId('play-bpm').fill('200');
     await page.getByTestId('play-toggle').click();
     await page.waitForTimeout(2200);

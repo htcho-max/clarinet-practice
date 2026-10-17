@@ -1,5 +1,19 @@
 /** MusicXML(압축 안 된 .musicxml/.xml) → 마디별 음 목록. 첫 번째 파트, 화음은 가장 높은 음만 */
-export interface ScoreNote { measure: number; index: number; midi: number; beat: number; dur: number }
+/** 연주 표현 (재생에 씀). slurNext = 다음 음까지 이음줄이 이어짐 (혀로 끊지 않음) */
+export interface Art {
+  stacc?: boolean;
+  accent?: boolean;
+  tenuto?: boolean;
+  fermata?: boolean;
+  slurNext?: boolean;
+  /** 이 음부터의 셈여림 (pp p mp mf f ff …) */
+  dyn?: string;
+  /** 이 음에서 크레셴도·디미누엔도 시작 / 끝 */
+  wedge?: 'cresc' | 'dim' | 'stop';
+  /** 이 음부터 rit.(점점 느리게) / a tempo(원래 빠르기로) */
+  tempo?: 'rit' | 'atempo';
+}
+export interface ScoreNote { measure: number; index: number; midi: number; beat: number; dur: number; art?: Art }
 export interface ParsedScore {
   title: string;
   measures: number[];
@@ -45,6 +59,39 @@ export function parseMusicXML(xml: string, opt: ParseOptions = {}): ParsedScore 
   const notes: ScoreNote[] = [];
   const measures: number[] = [];
   const measureLen = new Map<number, number>();
+  // 연주 표현: 지시(셈여림·쐐기·rit.)는 다음 음에 붙이고, 이음줄은 열려 있는 동안 slurNext
+  let pend: Art = {};
+  let slurOpen = false;
+  const DYN = new Set(['pppp', 'ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff', 'ffff', 'sf', 'sfz', 'fp', 'rf', 'rfz']);
+  const readDirection = (el: Element) => {
+    for (const d of Array.from(el.getElementsByTagName('dynamics'))) {
+      const k = Array.from(d.children).map((c) => c.nodeName).find((n) => DYN.has(n));
+      if (k) pend.dyn = k;
+    }
+    for (const w of Array.from(el.getElementsByTagName('wedge'))) {
+      const t = w.getAttribute('type');
+      pend.wedge = t === 'crescendo' ? 'cresc' : t === 'diminuendo' ? 'dim' : 'stop';
+    }
+    for (const w of Array.from(el.getElementsByTagName('words'))) {
+      const t = (w.textContent ?? '').trim().toLowerCase();
+      if (/^(rit|rall|ritard|riten|allarg)/.test(t)) pend.tempo = 'rit';
+      else if (/^(a tempo|tempo i|tempo primo)/.test(t)) pend.tempo = 'atempo';
+      else if (/^(cresc)/.test(t)) pend.wedge = 'cresc';
+      else if (/^(dim|decresc)/.test(t)) pend.wedge = 'dim';
+    }
+  };
+  /** 음표 하나의 아티큘레이션·이음줄·늘임표 */
+  const readNotations = (el: Element, a: Art) => {
+    const has = (tag: string) => el.getElementsByTagName(tag).length > 0;
+    if (has('staccato') || has('staccatissimo') || has('spiccato')) a.stacc = true;
+    if (has('accent') || has('strong-accent')) a.accent = true;
+    if (has('tenuto') || has('detached-legato')) a.tenuto = true;
+    if (has('fermata')) a.fermata = true;
+    const slurs = Array.from(el.getElementsByTagName('slur')).map((x) => x.getAttribute('type'));
+    if (slurs.includes('stop')) slurOpen = false;
+    if (slurs.includes('start')) slurOpen = true;
+  };
+  const takePend = (a: Art) => { Object.assign(a, pend); pend = {}; };
   let time: [number, number] = [4, 4];
   let nominal = 4;
   for (const m of Array.from(part.children).filter((c) => c.nodeName === 'measure')) {
@@ -61,6 +108,7 @@ export function parseMusicXML(xml: string, opt: ParseOptions = {}): ParsedScore 
         if (b && bt) { if (measures.length === 1) time = [Number(b), Number(bt)]; nominal = (Number(b) * 4) / Number(bt); }
         continue;
       }
+      if (el.nodeName === 'direction') { if (!all) readDirection(el); continue; }
       if (el.nodeName === 'backup') { pos -= Number(text(el, 'duration')) / divisions; continue; }
       if (el.nodeName === 'forward') { pos += Number(text(el, 'duration')) / divisions; maxPos = Math.max(maxPos, pos); continue; }
       if (el.nodeName !== 'note') continue;
@@ -99,6 +147,10 @@ export function parseMusicXML(xml: string, opt: ParseOptions = {}): ParsedScore 
       };
       if (!isChord && tieOpen && prev && groupStop()) {
         prev.dur += dur;
+        // 붙임줄 끝 음의 이음줄·늘임표는 앞 음에
+        const a = prev.art ?? (prev.art = {});
+        readNotations(el, a);
+        a.slurNext = slurOpen;
         contAt = start;
         tieOpen = tieStart;
         continue;
@@ -108,11 +160,18 @@ export function parseMusicXML(xml: string, opt: ParseOptions = {}): ParsedScore 
         if (midi > prev.midi) prev.midi = midi; // 화음은 가장 높은 음으로 채점
         continue;
       }
-      notes.push({ measure: num, index: 0, midi, beat: start, dur });
+      const art: Art = {};
+      takePend(art);
+      readNotations(el, art);
+      art.slurNext = slurOpen;
+      notes.push({ measure: num, index: 0, midi, beat: start, dur, art });
     }
     const whole = Array.from(m.getElementsByTagName('rest')).some((r) => r.getAttribute('measure') === 'yes');
     measureLen.set(num, whole || maxPos === 0 ? nominal : m.getAttribute('implicit') === 'yes' ? maxPos : Math.max(maxPos, nominal));
   }
+  // 마지막 음 뒤에 남은 지시(쐐기 끝 등)는 마지막 음에
+  if (!all && notes.length && (pend.dyn || pend.wedge || pend.tempo)) Object.assign(notes[notes.length - 1].art ?? (notes[notes.length - 1].art = {}), pend);
+  if (!all && notes.length) { const l = notes[notes.length - 1].art; if (l) l.slurNext = false; }
   // 마디 안 순서 번호
   let cur = -1, k = 0;
   for (const n of notes) { if (n.measure !== cur) { cur = n.measure; k = 0; } n.index = k++; }

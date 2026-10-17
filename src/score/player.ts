@@ -6,8 +6,11 @@ import { loadSamples, scheduleSampleNote } from '../audio/sampler';
 
 export type Voice = 'sample' | 'synth';
 
-/** time·dur 는 초. shift: 악보 midi 에 더할 반음 수 (실음으로) */
-export interface PlayEvent { note: ScoreNote; time: number; dur: number; inst?: 'clarinet' | 'piano'; shift?: number }
+/**
+ * time·dur 는 초. shift: 악보 midi 에 더할 반음 수 (실음으로).
+ * 표현 살리기: len = 실제로 소리 내는 길이(초), gain = 셈여림, legatoIn = 앞 음에서 이음줄로 이어짐(혀로 끊지 않음), accent = 강세
+ */
+export interface PlayEvent { note: ScoreNote; time: number; dur: number; inst?: 'clarinet' | 'piano'; shift?: number; len?: number; gain?: number; legatoIn?: boolean; accent?: boolean }
 /** 반주 파트 (parse 를 allNotes 로 읽은 것) */
 export interface AccPart { score: ParsedScore; inst: 'clarinet' | 'piano' }
 export type Plan = { events: PlayEvent[]; clicks: { time: number; accent: boolean }[]; total: number; acc: PlayEvent[] };
@@ -20,7 +23,60 @@ export const instFor = (name: string): 'clarinet' | 'piano' => (/piano|klavier|�
  * 반주 파트: 악보에 적힌 이조 값 (피아노는 0)
  */
 export const mainShift = (s: ParsedScore) => (s.transpose !== 0 ? s.transpose : -getTranspose());
-export interface PlanOptions { bpm: number; from: number; to: number; countIn: boolean }
+export interface PlanOptions { bpm: number; from: number; to: number; countIn: boolean; /** 셈여림·쐐기·스타카토·이음줄·늘임표·rit. 살리기 */ expressive?: boolean }
+
+/** 셈여림 기호 → 소리 크기 (0~1) */
+export const DYN_LEVEL: Record<string, number> = { pppp: 0.22, ppp: 0.27, pp: 0.33, p: 0.45, mp: 0.58, mf: 0.7, f: 0.85, ff: 0.97, fff: 1.05, ffff: 1.1, fp: 0.45 };
+const DEFAULT_LEVEL = 0.7;
+const WEDGE_STEP = 0.2; // 다음 셈여림 기호가 없을 때 크레셴도·디미누엔도로 바뀌는 정도
+
+export interface NoteExpression { gain: number; tempo: number; accent: boolean }
+/**
+ * 파트 전체를 처음부터 훑어 음마다 소리 크기·빠르기 배율을 정함.
+ * - 셈여림 기호는 그 음부터. 쐐기(< >)는 끝(다음 셈여림 기호 또는 ±한 단계)까지 고르게 바꿈
+ * - rit./rall. 은 그 음부터 4분음표마다 3.5%씩 느려짐(최저 72%), a tempo 에서 원래대로
+ */
+export function expressNotes(s: ParsedScore): NoteExpression[] {
+  const notes = s.notes;
+  // 음마다 곡 처음부터의 위치 (4분음표)
+  const mStart = new Map<number, number>();
+  let accQ = 0;
+  for (const m of s.measures) { mStart.set(m, accQ); accQ += s.measureLen.get(m) ?? 4; }
+  const absQ = notes.map((n) => (mStart.get(n.measure) ?? 0) + n.beat);
+  const out: NoteExpression[] = [];
+  let level = DEFAULT_LEVEL;
+  let ritFrom: number | null = null;
+  let wedge: { from: number; to: number; i0: number; i1: number } | null = null;
+  notes.forEach((n, i) => {
+    const a = n.art ?? {};
+    // 앞 쐐기가 이 음에서 끝났으면 그 끝 크기로
+    if (wedge && i >= (wedge as { i1: number }).i1) { level = (wedge as { to: number }).to; wedge = null; }
+    if (a.dyn && DYN_LEVEL[a.dyn] !== undefined) { level = DYN_LEVEL[a.dyn]; wedge = null; }
+    if (a.wedge === 'stop' && wedge) { level = wedge.to; wedge = null; }
+    if (a.wedge === 'cresc' || a.wedge === 'dim') {
+      // 끝: 다음 stop 또는 다음 셈여림 기호 또는 다음 쐐기
+      let j = i + 1;
+      while (j < notes.length && !notes[j].art?.dyn && !notes[j].art?.wedge) j++;
+      const endArt = notes[j]?.art;
+      const target = endArt?.dyn && DYN_LEVEL[endArt.dyn] !== undefined ? DYN_LEVEL[endArt.dyn]
+        : a.wedge === 'cresc' ? Math.min(1.05, level + WEDGE_STEP) : Math.max(0.22, level - WEDGE_STEP);
+      wedge = { from: level, to: target, i0: i, i1: Math.max(i + 1, j) };
+    }
+    let g = level;
+    if (wedge) {
+      const w = wedge as { from: number; to: number; i0: number; i1: number };
+      const t = (i - w.i0) / Math.max(1, w.i1 - w.i0);
+      g = w.from + (w.to - w.from) * Math.min(1, t);
+      if (i >= w.i1) { level = w.to; wedge = null; }
+    }
+    if (a.tempo === 'rit') ritFrom = absQ[i];
+    if (a.tempo === 'atempo') ritFrom = null;
+    const tempo = ritFrom === null ? 1 : Math.max(0.72, 1 - 0.035 * (absQ[i] + n.dur / 2 - ritFrom)); // 음 가운데 기준
+    const accent = !!a.accent || a.dyn === 'sf' || a.dyn === 'sfz' || a.dyn === 'rf' || a.dyn === 'rfz';
+    out.push({ gain: g, tempo, accent });
+  });
+  return out;
+}
 
 /** 구간의 음을 시간(초)으로. bpm 은 4분음표 기준 */
 export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[] = []): Plan {
@@ -35,20 +91,69 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
     start.set(m, acc);
     acc += s.measureLen.get(m) ?? beats * beatQ;
   }
-  const events = s.notes
-    .filter((n) => start.has(n.measure))
-    .map((n) => ({ note: n, time: (start.get(n.measure)! + n.beat) * q, dur: n.dur * q, shift: mainShift(s) }));
+  const ex = o.expressive ? expressNotes(s) : null;
+  const inRange = s.notes.map((n, i) => ({ n, i })).filter(({ n }) => start.has(n.measure));
+  // 4분음표 위치 → 초. 표현을 살리면 음마다 빠르기 배율(rit.)과 늘임표(그 음 끝에 더 머묾)를 반영
+  const bps: { Q: number; t: number; f: number }[] = [{ Q: 0, t: 0, f: 1 }];
+  if (ex) {
+    for (const { n, i } of inRange) {
+      const Q = start.get(n.measure)! + n.beat;
+      const last = bps[bps.length - 1];
+      if (Q < last.Q - 1e-9) continue;
+      const t = last.t + ((Q - last.Q) * q) / last.f;
+      bps.push({ Q, t, f: ex[i].tempo });
+      if (n.art?.fermata) {
+        const Qe = Q + n.dur;
+        const te = t + (n.dur * q) / ex[i].tempo;
+        bps.push({ Q: Qe, t: te + Math.min(2, n.dur * q * 0.8 + 0.3), f: ex[i].tempo });
+      }
+    }
+  }
+  const qToT = (Q: number) => {
+    if (!ex) return Q * q;
+    let k = 0;
+    for (let j = 0; j < bps.length; j++) if (bps[j].Q <= Q + 1e-9) k = j;
+    return bps[k].t + ((Q - bps[k].Q) * q) / bps[k].f;
+  };
+  const shift = mainShift(s);
+  const events: PlayEvent[] = inRange.map(({ n }) => {
+    const Q = start.get(n.measure)! + n.beat;
+    const time = qToT(Q);
+    return { note: n, time, dur: qToT(Q + n.dur) - time, shift };
+  });
+  if (ex) {
+    events.forEach((e, k) => {
+      const a = e.note.art ?? {};
+      const L = e.dur;
+      const next = events[k + 1];
+      const joined = !!next && next.time - (e.time + L) < 0.02; // 다음 음이 바로 이어짐 (쉼표 없음)
+      const slur = !!a.slurNext && joined && !a.stacc;
+      e.len = a.stacc ? Math.min(L * (a.slurNext ? 0.6 : 0.45), 0.4)
+        : slur ? L + 0.05
+          : a.tenuto ? L * 0.97
+            : L - Math.min(0.08, L * 0.18);
+      e.gain = ex[inRange[k].i].gain;
+      e.accent = ex[inRange[k].i].accent;
+      if (slur && next) next.legatoIn = true;
+    });
+  }
+  const totalT = qToT(acc);
   const clicks: { time: number; accent: boolean }[] = [];
   for (let k = 0; k * beatQ < acc - 1e-9; k++) {
     const tq = k * beatQ;
-    clicks.push({ time: tq * q, accent: k % beats === 0 });
+    clicks.push({ time: qToT(tq), accent: k % beats === 0 });
   }
   const accEv: PlayEvent[] = [];
   for (const ap of accParts) {
-    for (const n of ap.score.notes) if (start.has(n.measure)) accEv.push({ note: n, time: (start.get(n.measure)! + n.beat) * q, dur: n.dur * q, inst: ap.inst, shift: ap.score.transpose });
+    for (const n of ap.score.notes) {
+      if (!start.has(n.measure)) continue;
+      const Q = start.get(n.measure)! + n.beat;
+      const time = qToT(Q);
+      accEv.push({ note: n, time, dur: qToT(Q + n.dur) - time, inst: ap.inst, shift: ap.score.transpose });
+    }
   }
   accEv.sort((a, b) => a.time - b.time);
-  return { events, clicks, total: acc * q, acc: accEv };
+  return { events, clicks, total: totalT, acc: accEv };
 }
 
 /** 악기 소리로 재생 (실음으로 옮겨서). stop() 을 돌려줌 */
@@ -105,19 +210,23 @@ export class ScorePlayer {
       this.timers.push(setTimeout(() => opts.onNote?.(e, idx), Math.max(0, (a0 - ctx.currentTime + lat) * 1000)));
       if (opts.mute) continue;
       const m = e.note.midi + (e.shift ?? 0);
+      const level = e.gain === undefined ? 1 : e.gain / 0.75; // 표현 없음 = 예전 크기
       if (useSample) {
-        // 다음 음과 살짝 겹치게 (레가토)
-        const n = scheduleSampleNote(ctx, master, m, a0, e.dur * 0.98, opts.a4, 0.9);
+        // 다음 음과 살짝 겹치게 (레가토). 이음줄로 이어지는 음은 샘플의 어택을 건너뛰고 부드럽게
+        const n = scheduleSampleNote(ctx, master, m, a0, e.len ?? e.dur * 0.98, opts.a4, 0.9 * level, { legatoIn: e.legatoIn, accent: e.accent });
         if (n) { this.nodes.push(n); continue; }
       }
       const osc = ctx.createOscillator();
       osc.setPeriodicWave(wave);
       osc.frequency.value = midiToFreq(m, opts.a4);
       const g = ctx.createGain();
-      const a = t0 + e.time, len = Math.max(0.05, e.dur * 0.92);
-      g.gain.setValueAtTime(0, a);
-      g.gain.linearRampToValueAtTime(1, a + Math.min(0.03, len / 3));
-      g.gain.setValueAtTime(0.85, a + len * 0.6);
+      const a = t0 + e.time, len = Math.max(0.05, e.len ?? e.dur * 0.92);
+      const peak = Math.min(1.4, level * (e.accent ? 1.35 : 1));
+      const att = e.legatoIn ? 0.04 : e.accent ? 0.008 : Math.min(0.02, len / 3);
+      g.gain.setValueAtTime(e.legatoIn ? level * 0.6 : 0, a);
+      g.gain.linearRampToValueAtTime(peak, a + att);
+      if (e.accent) g.gain.linearRampToValueAtTime(level, a + att + 0.12);
+      g.gain.setValueAtTime(level * 0.9, a + Math.max(att + 0.01, len * 0.6));
       g.gain.linearRampToValueAtTime(0, a + len);
       osc.connect(g).connect(lp);
       osc.start(a);

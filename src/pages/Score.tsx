@@ -233,6 +233,9 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
   const [withClick, setWithClick] = useState(false);
   const [countIn, setCountIn] = useState(true);
   const [loop, setLoop] = useState(false);
+  // 악보의 셈여림·스타카토·이음줄·늘임표·rit. 을 살려서 재생
+  const [expressive, setExpressive] = useState(() => { try { return localStorage.getItem('clarinet-expressive') !== '0'; } catch { return true; } });
+  useEffect(() => { try { localStorage.setItem('clarinet-expressive', expressive ? '1' : '0'); } catch { /* 무시 */ } }, [expressive]);
   const [voice, setVoice] = useState<Voice>('sample');
   const [voiceNote, setVoiceNote] = useState('');
   const [nowMeasure, setNowMeasure] = useState<number | null>(null);
@@ -369,7 +372,7 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
   const curIdx = useRef(0);
   async function playRange(resumeAt?: number, o: { keepListening?: boolean; muteMine?: boolean } = {}) {
     if (listening && !o.keepListening) stop();
-    const full = planPlayback(parsed, { bpm: playBpm, from, to, countIn: o.keepListening ? true : resumeAt === undefined && countIn }, hasAcc && (accOn || o.keepListening) ? accParts : []);
+    const full = planPlayback(parsed, { bpm: playBpm, from, to, countIn: o.keepListening ? true : resumeAt === undefined && countIn, expressive: expressive && !o.keepListening }, hasAcc && (accOn || o.keepListening) ? accParts : []);
     const plan = resumeAt === undefined ? full : slicePlan(full, resumeAt);
     const base = resumeAt ?? 0;
     setPausedAt(null);
@@ -579,6 +582,7 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
           <label><input type="checkbox" checked={countIn} onChange={(e) => setCountIn(e.target.checked)} /> 시작 전 한 마디 세기</label>
           <label><input type="checkbox" checked={withClick} onChange={(e) => setWithClick(e.target.checked)} /> 메트로놈</label>
           <label><input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} /> 반복</label>
+          <label title="셈여림(p·f·쐐기), 스타카토·테누토·강세, 이음줄(혀로 끊지 않고 이어서), 늘임표, rit.·a tempo 를 악보대로"><input type="checkbox" checked={expressive} onChange={(e) => setExpressive(e.target.checked)} disabled={playing} data-testid="expressive" /> 셈여림·아티큘레이션 살리기</label>
         </div>
         <div className="segmented small">
           <button className={voice === 'sample' ? 'on' : ''} onClick={() => setVoice('sample')} disabled={playing}>{P.sampleName} 녹음</button>

@@ -35,10 +35,12 @@ export function pickSampleName(midi: number, a4 = 440): { name: string; rate: nu
 }
 
 const ONSET = 0.025; // 샘플 앞의 무음
+const LEGATO_SKIP = 0.15; // 이음줄 음은 어택을 건너뛰고 이만큼 뒤부터
 
 /** 한 음 예약 (midi 는 실음). 끝나는 노드를 돌려줌 */
 export function scheduleSampleNote(
   ctx: BaseAudioContext, dest: AudioNode, midi: number, when: number, dur: number, a4 = 440, gain = 1,
+  o: { legatoIn?: boolean; accent?: boolean } = {},
 ): AudioBufferSourceNode | null {
   const pick = pickSampleName(midi, a4);
   const buffer = buffers.get(pick.name);
@@ -47,14 +49,19 @@ export function scheduleSampleNote(
   src.buffer = buffer;
   src.playbackRate.value = pick.rate;
   const g = ctx.createGain();
-  const len = Math.max(0.06, Math.min(dur, buffer.duration / pick.rate - ONSET - 0.2));
+  // 이음줄로 이어지는 음: 녹음의 어택(혀 소리)을 건너뛰고 짧게 겹쳐 들어옴
+  const offset = o.legatoIn ? ONSET + LEGATO_SKIP : ONSET;
+  const len = Math.max(0.06, Math.min(dur, buffer.duration / pick.rate - offset - 0.2));
   const rel = Math.min(0.08, len * 0.3);
-  g.gain.setValueAtTime(0, when);
-  g.gain.linearRampToValueAtTime(gain, when + 0.02);
-  g.gain.setValueAtTime(gain, when + len - rel * 0.3);
+  const att = o.legatoIn ? 0.035 : o.accent ? 0.008 : 0.02;
+  const peak = o.accent ? gain * 1.35 : gain;
+  g.gain.setValueAtTime(o.legatoIn ? gain * 0.5 : 0, when);
+  g.gain.linearRampToValueAtTime(peak, when + att);
+  if (o.accent) g.gain.linearRampToValueAtTime(gain, when + att + 0.12);
+  g.gain.setValueAtTime(gain, Math.max(when + att + 0.01, when + len - rel * 0.3));
   g.gain.linearRampToValueAtTime(0, when + len + rel);
   src.connect(g).connect(dest);
-  src.start(when, ONSET);
+  src.start(when, offset);
   src.stop(when + len + rel + 0.02);
   return src;
 }
