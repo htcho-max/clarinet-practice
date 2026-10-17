@@ -1,0 +1,60 @@
+import TUNING from './clarinetSamples.json';
+
+/**
+ * 실제 클라리넷 녹음 샘플 (public/clarinet, NOTICE.txt 참고). 처음 쓸 때 한 번 불러옴.
+ * 샘플 이름과 midi 는 실음(콘서트 피치) 기준. [midi, 샘플 자체 음정 오차(센트)]
+ */
+const SAMPLES = Object.entries(TUNING as unknown as Record<string, [number, number]>)
+  .map(([name, [midi, cents]]) => ({ name, midi, cents }))
+  .sort((a, b) => a.midi - b.midi);
+
+const buffers = new Map<string, AudioBuffer>();
+let loading: Promise<boolean> | null = null;
+
+export function samplesReady() { return buffers.size === SAMPLES.length; }
+export const SAMPLE_NAMES = SAMPLES.map((s) => s.name);
+
+export function loadClarinetSamples(ctx: BaseAudioContext): Promise<boolean> {
+  if (!loading) {
+    const base = import.meta.env.BASE_URL;
+    loading = Promise.all(SAMPLES.map(async (s) => {
+      const res = await fetch(`${base}clarinet/${s.name}.mp3`);
+      if (!res.ok) throw new Error(s.name);
+      buffers.set(s.name, await ctx.decodeAudioData(await res.arrayBuffer()));
+    })).then(() => true, () => { loading = null; return false; });
+  }
+  return loading;
+}
+
+/** 가장 가까운 샘플 이름과 재생 속도 (샘플 자체 음정 오차까지 보정). midi 는 실음 */
+export function pickSampleName(midi: number, a4 = 440): { name: string; rate: number } {
+  let best = SAMPLES[0];
+  for (const s of SAMPLES) if (Math.abs(s.midi - midi) < Math.abs(best.midi - midi)) best = s;
+  const semis = midi - best.midi - best.cents / 100 + 12 * Math.log2(a4 / 440);
+  return { name: best.name, rate: Math.pow(2, semis / 12) };
+}
+
+const ONSET = 0.025; // 샘플 앞의 무음
+
+/** 한 음 예약 (midi 는 실음). 끝나는 노드를 돌려줌 */
+export function scheduleClarinetNote(
+  ctx: BaseAudioContext, dest: AudioNode, midi: number, when: number, dur: number, a4 = 440, gain = 1,
+): AudioBufferSourceNode | null {
+  const pick = pickSampleName(midi, a4);
+  const buffer = buffers.get(pick.name);
+  if (!buffer) return null;
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  src.playbackRate.value = pick.rate;
+  const g = ctx.createGain();
+  const len = Math.max(0.06, Math.min(dur, buffer.duration / pick.rate - ONSET - 0.2));
+  const rel = Math.min(0.08, len * 0.3);
+  g.gain.setValueAtTime(0, when);
+  g.gain.linearRampToValueAtTime(gain, when + 0.02);
+  g.gain.setValueAtTime(gain, when + len - rel * 0.3);
+  g.gain.linearRampToValueAtTime(0, when + len + rel);
+  src.connect(g).connect(dest);
+  src.start(when, ONSET);
+  src.stop(when + len + rel + 0.02);
+  return src;
+}

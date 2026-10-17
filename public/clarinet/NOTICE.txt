@@ -1,0 +1,5 @@
+클라리넷 샘플 출처: npm 패키지 tonejs-instrument-clarinet-mp3 1.1.2 (MIT 표기)
+https://www.npmjs.com/package/tonejs-instrument-clarinet-mp3
+원본: tonejs-instruments (https://github.com/nbrosowsky/tonejs-instruments)
+앱에서 쓰기 위해 6초로 자르고 음량을 맞춘 뒤 80kbps 모노로 다시 인코딩했습니다. 파일 이름은 실음(콘서트 피치)입니다.
+(원본 Fs6 은 실제로 F6 에 가까워서 F6 으로 이름을 바꿨습니다.)
