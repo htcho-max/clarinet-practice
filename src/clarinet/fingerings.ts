@@ -1,5 +1,8 @@
 /**
- * B♭ 클라리넷 (17키 6링 뵘식) 운지표. 모두 악보음(written) 기준 midi.
+ * 뷔페 크램폰 B12 (B♭, 17키 6링 뵘식) 운지표. 모두 악보음(written) 기준 midi.
+ * B12 키: 레지스터, A, G♯, 옆 키 4개, 왼손 E♭/B♭ 슬리버, 오른손 B/F♯ 슬리버,
+ * 왼손 새끼 4개(E/B, F/C, F♯/C♯, C♯/G♯), 오른손 새끼 4개(E/B, F/C, F♯/C♯, A♭/E♭) = 17개.
+ * 대체 E♭/A♭ 레버·관절식 G♯ 같은 추가 키는 없어서 그런 운지는 넣지 않음.
  * 운지 자료: 일반적인 제조사 운지표 (@pepperhorn/fingering-components 0.2.2 의 clarinet.json, MIT 를 참고해
  * 입문자용으로 새끼손가락 키를 정리함 — 낮은 E·B 는 왼손, F·C 는 오른손, F♯·C♯ 는 왼손, G♯·D♯ 은 오른손).
  */
@@ -23,19 +26,19 @@ export const KEY_LABEL: Record<KeyId, string> = {
   l1: '왼손 1 (검지)',
   l2: '왼손 2 (중지)',
   l3: '왼손 3 (약지)',
-  lEbSide: '왼손 옆 E♭/B♭ 키',
-  csgs: 'C♯/G♯ 키',
+  lEbSide: '왼손 E♭/B♭ 슬리버 키 (검지 아래)',
+  csgs: '왼손 새끼 C♯/G♯',
   lFC: '왼손 새끼 F/C',
   lEB: '왼손 새끼 E/B',
   lFs: '왼손 새끼 F♯/C♯',
-  t1: '옆 트릴 키 1 (맨 위)',
-  t2: '옆 트릴 키 2',
-  t3: '옆 트릴 키 3',
-  t4: '옆 트릴 키 4 (맨 아래)',
+  t1: '옆 키 1 (오른손 검지 옆, 맨 위)',
+  t2: '옆 키 2',
+  t3: '옆 키 3',
+  t4: '옆 키 4 E♭/B♭ (맨 아래)',
   r1: '오른손 1 (검지)',
   r2: '오른손 2 (중지)',
   r3: '오른손 3 (약지)',
-  sliver: '오른손 옆 E♭/B♭ 키 (슬리버)',
+  sliver: '오른손 B/F♯ 슬리버 키 (검지 아래)',
   rAb: '오른손 새끼 A♭/E♭',
   rFs: '오른손 새끼 F♯/C♯',
   rFC: '오른손 새끼 F/C',
@@ -59,14 +62,14 @@ const CHALUMEAU: { midi: number; main: Fingering; alts: Fingering[]; tip?: strin
   { midi: 56, main: f([...LOW, 'rAb']), alts: [] },
   { midi: 57, main: f([...LH, 'r1', 'r2']), alts: [] },
   { midi: 58, main: f([...LH, 'r1']), alts: [] },
-  { midi: 59, main: f([...LH, 'r2']), alts: [f([...LH, 'r1', 'sliver'], '옆 키로')], tip: '오른손 중지 하나만 막는 "갈래 운지"예요.' },
+  { midi: 59, main: f([...LH, 'r2']), alts: [f([...LH, 'r1', 'sliver'], '오른손 슬리버 키로')], tip: '오른손 중지 하나만 막는 "갈래 운지"예요.' },
   { midi: 60, main: f([...LH]), alts: [], tip: '왼손만 모두 막아요. 오른손은 키 위에 가볍게 올려 둬요.' },
-  { midi: 61, main: f([...LH, 'csgs']), alts: [] },
+  { midi: 61, main: f([...LH, 'csgs']), alts: [], tip: '왼손을 모두 막고 왼손 새끼로 C♯/G♯ 키.' },
   { midi: 62, main: f(['thumb', 'l1', 'l2']), alts: [] },
-  { midi: 63, main: f(['thumb', 'l1', 'l2', 't4']), alts: [f(['thumb', 'l1', 'l2', 'lEbSide'], '왼손 옆 키로')] },
+  { midi: 63, main: f(['thumb', 'l1', 'l2', 't4']), alts: [f(['thumb', 'l1', 'l2', 'lEbSide'], '왼손 슬리버 키로')], tip: '오른손 검지 옆면으로 옆 키 4(맨 아래)를 눌러요.' },
   { midi: 64, main: f(['thumb', 'l1']), alts: [] },
   { midi: 65, main: f(['thumb']), alts: [] },
-  { midi: 66, main: f(['l1']), alts: [f(['thumb', 't3', 't4'], '트릴 키로')], tip: '엄지를 떼고 왼손 검지만.' },
+  { midi: 66, main: f(['l1']), alts: [f(['thumb', 't3', 't4'], '옆 키로')], tip: '엄지를 떼고 왼손 검지만.' },
 ];
 
 const NOTES: NoteFingering[] = [
@@ -75,7 +78,7 @@ const NOTES: NoteFingering[] = [
   { midi: 67, main: f([]), alts: [], tip: '"열린 G". 아무것도 막지 않아요. 오른손 엄지로 악기를 받치고, 손가락은 구멍 바로 위에 둬요.' },
   { midi: 68, main: f(['gs']), alts: [], tip: '왼손 검지 옆면으로 G♯ 키를 눌러요.' },
   { midi: 69, main: f(['a']), alts: [], tip: '왼손 검지를 살짝 올려 A 키를 눌러요. 손가락을 들어 올리지 말고 굴리듯이.' },
-  { midi: 70, main: f(['a', 'reg']), alts: [f(['a', 't4'], '트릴 키로 (음색이 더 좋을 때가 많아요)')], tip: 'A 키와 레지스터 키를 같이. 소리가 얇으면 오른손을 내려 두어도 돼요.' },
+  { midi: 70, main: f(['a', 'reg']), alts: [f(['a', 't4'], '옆 키 4로 (음색이 더 좋을 때가 많아요)')], tip: 'A 키와 레지스터 키를 같이. 소리가 얇으면 오른손을 내려 두어도 돼요.' },
   // 클라리온: 샬뤼모 운지 + 레지스터 키
   ...CHALUMEAU.filter((n) => n.midi <= 65).map((n) => ({
     midi: n.midi + 19,

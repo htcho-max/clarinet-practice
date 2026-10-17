@@ -29,7 +29,7 @@ export const DEFAULT_ROUTINE: RoutineItem[] = [
 ];
 
 export const DEFAULT_SETTINGS: Settings = {
-  a4: 440,
+  a4: 442, // 뷔페 B12 는 A=442Hz 기준 악기
   instrument: 'Bb',
   clickSound: 'wood',
   clickVolume: 0.8,

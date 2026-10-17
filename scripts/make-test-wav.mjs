@@ -5,7 +5,7 @@
 //  tongue.wav   : 악보음 C5 를 0.25초마다 혀로 끊기 (텅잉)
 import { writeFileSync } from 'node:fs';
 const sr = 48000, H = [1, 0.08, 0.55, 0.05, 0.32, 0.04, 0.2, 0.03, 0.12];
-const f = (m, c = 0) => 440 * 2 ** ((m - 69) / 12 + c / 1200);
+const f = (m, c = 0) => 442 * 2 ** ((m - 69) / 12 + c / 1200); // 앱 기본 A=442 (뷔페 B12)
 const W = (m) => m - 2; // 악보음 → 실음 (B♭ 클라리넷)
 
 function write(name, dur, freqAt, ampAt = () => 1) {

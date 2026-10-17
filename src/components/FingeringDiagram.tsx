@@ -2,7 +2,7 @@ import type { KeyId } from '../clarinet/fingerings';
 import { KEY_LABEL } from '../clarinet/fingerings';
 
 /**
- * 클라리넷 앞모습 운지 그림 (위가 마우스피스 쪽). 누르는 키·막는 구멍을 칠함.
+ * 클라리넷(뷔페 B12, 17키 6링) 앞모습 운지 그림 (위가 마우스피스 쪽). 누르는 키·막는 구멍을 칠함.
  * 엄지 구멍과 레지스터 키는 악기 뒤에 있어서 왼쪽에 따로 그림.
  */
 type Shape =
@@ -18,8 +18,8 @@ const S: Record<KeyId, Shape> = {
   l2: { t: 'hole', x: 60, y: 72, r: 9 },
   l3: { t: 'hole', x: 60, y: 98, r: 9 },
   lEbSide: { t: 'key', x: 77, y: 85, w: 12, h: 4.5 },
-  csgs: { t: 'key', x: 80, y: 112, w: 7, h: 15 },
-  lFC: { t: 'key', x: 94, y: 122, w: 14, h: 7 },
+  csgs: { t: 'key', x: 83, y: 113, w: 7, h: 13 },
+  lFC: { t: 'key', x: 98, y: 121, w: 13, h: 7 },
   lEB: { t: 'key', x: 88, y: 136, w: 11, h: 9 },
   lFs: { t: 'key', x: 102, y: 136, w: 11, h: 9 },
   t1: { t: 'key', x: 39, y: 60, w: 11, h: 5 },

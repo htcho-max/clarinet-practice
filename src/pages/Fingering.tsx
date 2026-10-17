@@ -62,6 +62,7 @@ export function Fingering() {
 
       {mode === 'chart' ? (
         <>
+          <p className="hint fg-model">뷔페 B12 (17키 6링 뵘식) 기준 운지예요. 칠해진 곳을 막거나 눌러요.</p>
           <div className="fg-grid" data-testid="fg-grid">
             {list.map((n) => (
               <button key={n.midi} className={`chip ${sel === n.midi ? 'on' : ''} ${heardOk?.midi === n.midi ? 'heard' : ''}`} onClick={() => setSel(n.midi)}>

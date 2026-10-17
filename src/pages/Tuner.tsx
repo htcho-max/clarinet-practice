@@ -107,7 +107,7 @@ export function Tuner() {
                   : avg > 0 ? `평균 ${centsText(avg)} — 높아요. 배럴(마우스피스 아래 통)을 1mm쯤 빼 보세요.`
                     : `평균 ${centsText(avg)} — 낮아요. 배럴을 조금 밀어 넣어 보세요. 다 넣었는데도 낮으면 악기를 더 데우고 다시 재요.`}
             </p>
-            <p className="hint">악기가 차가우면 음이 낮아요. 1~2분 불어서 데운 뒤 조율하세요. 아래 관절(B4)이 많이 다르면 위아래 관절 사이를 조금 빼요.</p>
+            <p className="hint">뷔페 B12는 A=442Hz에 맞춰 만든 악기라 앱 기준음도 442Hz로 시작해요. 합주에서 440Hz를 쓰면 아래에서 바꾸세요. 악기가 차가우면 음이 낮아요. 1~2분 불어서 데운 뒤 조율하세요. 아래 관절(B4)이 많이 다르면 위아래 관절 사이를 조금 빼요.</p>
             <button className={`wide ${refOn ? 'secondary on' : 'secondary'}`} onClick={toggleRef}>
               {refOn ? `■ ${target.label} 기준음 끄기` : `▶ ${target.label} 기준음 계속 듣기`}
             </button>

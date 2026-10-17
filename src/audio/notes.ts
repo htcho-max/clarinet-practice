@@ -11,7 +11,7 @@ export const NOTE_NAMES_KO: Record<string, string> = {
  */
 export type Instrument = 'Bb' | 'A' | 'Eb' | 'C';
 export const INSTRUMENTS: { id: Instrument; label: string; semis: number }[] = [
-  { id: 'Bb', label: 'B♭ 클라리넷', semis: 2 },
+  { id: 'Bb', label: 'B♭ 클라리넷 (뷔페 B12)', semis: 2 },
   { id: 'A', label: 'A 클라리넷', semis: 3 },
   { id: 'Eb', label: 'E♭ 클라리넷', semis: -3 },
   { id: 'C', label: '실음 (이조 안 함)', semis: 0 },
