@@ -3,7 +3,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { liveQuery } from 'dexie';
 import type { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { db, type ScoreFile } from '../data/db';
-import { parseMusicXML, notesInRange, type ParsedScore } from '../score/parse';
+import { parseMusicXML, notesInRange, playOrder, hasRepeats, type ParsedScore } from '../score/parse';
+import { measureStats, reviewChanges, reviewMessage, noteCentsOf, ladderVerdict, LADDER_STEP } from '../data/review';
+import { currentGearId, useReviews } from '../state/useGear';
+import { GearPicker } from '../components/GearPicker';
 import { alignNotes, summarizeScore, type Played, type Scored } from '../score/align';
 import { createOSMD, colorNotes, noteElements, showParts } from '../score/osmd';
 import { planPlayback, scorePlayer, slicePlan, instFor, type Voice, type AccPart } from '../score/player';
@@ -57,7 +60,7 @@ export function Score() {
   const file = useRef<HTMLInputElement>(null);
   const open = scores.find((s) => s.id === openId) ?? null;
   // 오늘의 연습에서 연습곡을 바로 열기
-  useEffect(() => { const p = takePending(); if (p) p().then((id) => { setExView(true); setOpenId(id); }).catch(() => {}); }, []);
+  useEffect(() => { const p = takePending(); if (p) p.fn().then((id) => { setExView(p.exercises); setOpenId(id); }).catch(() => {}); }, []);
   const folderName = (id?: string) => folders.find((f) => f.id === id)?.name ?? '분류 안 됨';
 
   async function importFile(f: File) {
@@ -151,7 +154,7 @@ export function Score() {
                       <option value="">분류 안 됨</option>
                       {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                     </select>
-                    <button className="mini danger" onClick={() => { if (confirm('이 악보를 지울까요?')) db.scores.delete(s.id!); }} aria-label="악보 삭제">✕</button>
+                    <button className="mini danger" onClick={() => { if (confirm('이 악보를 지울까요? (복습함의 이 악보 마디도 지워요)')) { db.scores.delete(s.id!); db.reviews.where('scoreId').equals(s.id!).delete(); } }} aria-label="악보 삭제">✕</button>
                   </div>
                 </li>
               ))}
@@ -248,6 +251,19 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
   useEffect(() => { try { localStorage.setItem('clarinet-score-zoom', String(zoom)); } catch { /* 무시 */ } }, [zoom]);
   const loopRef = useRef(loop);
   loopRef.current = loop;
+  // 도돌이표대로 펼쳐서 듣기
+  const repeats = useMemo(() => hasRepeats(parsed), [parsed]);
+  const [unfold, setUnfold] = useState(() => { try { return localStorage.getItem('clarinet-unfold') !== '0'; } catch { return true; } });
+  useEffect(() => { try { localStorage.setItem('clarinet-unfold', unfold ? '1' : '0'); } catch { /* 무시 */ } }, [unfold]);
+  const order = useMemo(() => (repeats && unfold ? playOrder(parsed) : undefined), [parsed, repeats, unfold]);
+  // 템포 사다리: 목표 템포로 한 마디 세고 채점, 통과하면 +4
+  const [ladderOn, setLadderOn] = useState(() => { try { return localStorage.getItem('clarinet-ladder') === '1'; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem('clarinet-ladder', ladderOn ? '1' : '0'); } catch { /* 무시 */ } }, [ladderOn]);
+  const [ladderMsg, setLadderMsg] = useState<{ pass: boolean; text: string } | null>(null);
+  const [reviewMsg, setReviewMsg] = useState<string | null>(null);
+  const reviews = useReviews(score.id);
+  const todayStr = localDate();
+  const dueHere = reviews.filter((r) => r.due <= todayStr).sort((a, b) => a.measure - b.measure);
   useWakeLock(listening || playing, settings.wakeLock);
   const ex = score.exercise;
   const { session } = useSession();
@@ -261,6 +277,8 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
   const [regenBusy, setRegenBusy] = useState(false);
   useEffect(() => { if (ex) setPlayBpm(ex.tempo); }, [ex?.stepId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (piece?.currentBpm) setPlayBpm(piece.currentBpm); else if (piece?.targetBpm) setPlayBpm(Math.round(piece.targetBpm * 0.7)); }, [piece?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 사다리를 켜면 이 악보의 사다리 템포로
+  useEffect(() => { if (ladderOn && score.ladder?.bpm) setPlayBpm(score.ladder.bpm); }, [ladderOn]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => scorePlayer.stop(), []);
 
   const expected = useMemo(() => notesInRange(parsed, from, to), [parsed, from, to]);
@@ -337,7 +355,7 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
   // 연주 듣기: 음 단위로 모으기
   const segRef = useRef<NoteSegmenter | null>(null);
   /** 채점을 시작할 때의 구간 (듣는 중에 구간을 바꿔도 채점은 이 구간으로) */
-  const listenCtx = useRef<{ expected: typeof expected; from: number; to: number; inSession: boolean } | null>(null);
+  const listenCtx = useRef<{ expected: typeof expected; from: number; to: number; inSession: boolean; ladder?: number } | null>(null);
 
   useEffect(() => {
     if (!listening) return;
@@ -370,9 +388,9 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
     if (scroll) lit.current[0]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
   }
   const curIdx = useRef(0);
-  async function playRange(resumeAt?: number, o: { keepListening?: boolean; muteMine?: boolean } = {}) {
+  async function playRange(resumeAt?: number, o: { keepListening?: boolean; muteMine?: boolean; autoStop?: boolean } = {}) {
     if (listening && !o.keepListening) stop();
-    const full = planPlayback(parsed, { bpm: playBpm, from, to, countIn: o.keepListening ? true : resumeAt === undefined && countIn, expressive: expressive && !o.keepListening }, hasAcc && (accOn || o.keepListening) ? accParts : []);
+    const full = planPlayback(parsed, { bpm: playBpm, from, to, countIn: o.keepListening ? true : resumeAt === undefined && countIn, expressive: expressive && !o.keepListening, order }, hasAcc && (accOn || o.keepListening) ? accParts : []);
     const plan = resumeAt === undefined ? full : slicePlan(full, resumeAt);
     const base = resumeAt ?? 0;
     setPausedAt(null);
@@ -390,7 +408,7 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
       onEnd: () => {
         if (o.keepListening) {
           highlight(null); setPlaying(false);
-          endTimer.current = setTimeout(() => { endTimer.current = null; stopRef.current(); }, 800);
+          if (o.autoStop !== false) endTimer.current = setTimeout(() => { endTimer.current = null; stopRef.current(); }, 800);
           return;
         }
         if (loopRef.current) playRangeRef.current(); else { highlight(null); setPlaying(false); }
@@ -424,15 +442,19 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
     setResult(null);
     setSaved(null);
     setPassMsg(null);
+    setLadderMsg(null);
+    setReviewMsg(null);
     played.current = [];
     if (!pitchTracker.running) await pitch.start();
     if (!pitchTracker.running) return; // 마이크를 못 열면 시작하지 않음 (오류 문구는 pitch.error)
     runStart.current = Date.now();
-    listenCtx.current = { expected, from, to, inSession: !!session && session.runningSince !== null };
+    listenCtx.current = { expected, from, to, inSession: !!session && session.runningSince !== null, ladder: ladderOn ? playBpm : undefined };
     if (recOn) { try { await recorder.start(settings.a4); } catch { /* 녹음 못 해도 채점은 계속 */ } }
     listeningRef.current = true;
     setListening(true);
     if (hasAcc && scoreWithAcc) { curIdx.current = 0; playRange(undefined, { keepListening: true, muteMine: true }); }
+    // 템포 사다리: 목표 템포로 한 마디 세어 주기 (내 파트 소리는 끄고, 끝나도 채점은 계속)
+    else if (ladderOn) { curIdx.current = 0; playRange(undefined, { keepListening: true, muteMine: true, autoStop: false }); }
   }
   function stop() {
     if (!listeningRef.current) return; // 두 번 끝나지 않게
@@ -456,16 +478,39 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
       const pct = Math.round((sm.ok / Math.max(1, sm.total)) * 100);
       recordProgress(ex.progressId ?? ex.stepId, pct, sm.meanAbs, playBpm).then((ok) => setPassMsg(ok ? '통과! 다음 단계로 가거나 템포를 올려 보세요.' : null)).catch(() => {});
     }
+    // 템포 사다리 판정
+    const rhNow = r.length ? analyzeRhythm(parsed, r) : null;
+    if (ctx.ladder !== undefined && r.some((x) => x.status !== 'missed')) {
+      const pct = Math.round((sm.ok / Math.max(1, sm.total)) * 100);
+      const v = ladderVerdict({ pct, target: ctx.ladder, bpm: rhNow ? rhNow.bpm : null, rhythmMeanAbs: rhNow ? rhNow.meanAbs : null });
+      setLadderMsg({ pass: v.pass, text: v.msg });
+      const best = Math.max(score.ladder?.best ?? 0, v.pass ? ctx.ladder : 0);
+      db.scores.update(score.id!, { ladder: { bpm: v.next, best, at: Date.now() } }).catch(() => {});
+      setPlayBpm(v.next);
+      if (v.pass && score.pieceId) db.pieces.get(score.pieceId).then((pc) => { if (pc && (pc.currentBpm ?? 0) < ctx.ladder!) db.pieces.update(pc.id, { currentBpm: ctx.ladder }); }).catch(() => {});
+    }
+    // 복습함 (내 악보만, 연습곡은 다시 만들어지니 빼요)
+    if (!ex && r.length) {
+      const stats = measureStats(r);
+      const today = localDate();
+      void db.reviews.where('scoreId').equals(score.id!).toArray().then(async (rows) => {
+        const c = reviewChanges(new Map(rows.map((x) => [x.id, x])), stats, score.id!, score.title, today);
+        if (c.put.length) await db.reviews.bulkPut(c.put);
+        if (c.del.length) await db.reviews.bulkDelete(c.del);
+        setReviewMsg(reviewMessage(c));
+      }).catch(() => {});
+    }
     void (async () => {
       const rec = await recP;
       const played_ = r.filter((x) => x.status !== 'missed').length;
       if (played_ < 2 || durationSec < 2) return;
-      const rh = analyzeRhythm(parsed, r);
+      const rh = rhNow;
       const weak = [...sm.byMeasure.entries()].filter(([, v]) => v !== null).sort((a, b) => b[1]! - a[1]!).slice(0, 3).map(([m]) => m);
       const run: ScoreRun = {
         createdAt: Date.now(), date: localDate(), scoreId: score.id!, title: score.title, pieceId: score.pieceId, exerciseId: ex?.stepId,
         from: ctx.from, to: ctx.to, durationSec, total: sm.total, ok: sm.ok, wrong: sm.wrong, missed: sm.missed, meanAbs: sm.meanAbs,
         rhythmMs: rh?.meanAbsMs ?? null, bpm: rh ? Math.round(rh.bpm) : null, inSession: ctx.inSession, weakMeasures: weak,
+        noteCents: noteCentsOf(r), ladderBpm: ctx.ladder, gearId: await currentGearId(),
       };
       let runId: number;
       try { runId = await db.scoreRuns.add(run); } catch { setSaved('연습 기록을 저장하지 못했어요. 저장 공간을 확인해 주세요.'); return; }
@@ -570,6 +615,17 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
           <button disabled={listening} onClick={() => { setLenLock(null); setRange(firstNoteMeasure, last); }}>전체</button>
           <button onClick={() => setRange(from + span, to + span)} disabled={listening || to >= last}>다음 구간 ▶</button>
         </div>
+        {dueHere.length > 0 && (
+          <div className="review-here" data-testid="review-here">
+            <span className="small"><b>오늘 복습할 마디</b></span>
+            <div className="chips">
+              {dueHere.map((r) => (
+                <button key={r.id} className={`chip ${from === r.measure && to === r.measure ? 'on' : ''}`} disabled={listening} onClick={() => { setLenLock(null); setRange(r.measure, r.measure); }}>{r.measure}마디</button>
+              ))}
+              {dueHere.length > 1 && <button className="chip" disabled={listening} onClick={() => { setLenLock(null); setRange(dueHere[0].measure, dueHere[dueHere.length - 1].measure); }}>{dueHere[0].measure}~{dueHere[dueHere.length - 1].measure} 한 번에</button>}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card" data-testid="play-card">
@@ -582,6 +638,7 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
           <label><input type="checkbox" checked={countIn} onChange={(e) => setCountIn(e.target.checked)} /> 시작 전 한 마디 세기</label>
           <label><input type="checkbox" checked={withClick} onChange={(e) => setWithClick(e.target.checked)} /> 메트로놈</label>
           <label><input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} /> 반복</label>
+          {repeats && <label title="도돌이표·1·2번 괄호대로 펼쳐서 (구간 안에서)"><input type="checkbox" checked={unfold} onChange={(e) => setUnfold(e.target.checked)} disabled={playing} data-testid="unfold" /> 도돌이표대로</label>}
           <label title="셈여림(p·f·쐐기), 스타카토·테누토·강세, 이음줄(혀로 끊지 않고 이어서), 늘임표, rit.·a tempo 를 악보대로"><input type="checkbox" checked={expressive} onChange={(e) => setExpressive(e.target.checked)} disabled={playing} data-testid="expressive" /> 셈여림·아티큘레이션 살리기</label>
         </div>
         <div className="segmented small">
@@ -602,6 +659,19 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
       </div>
 
       <div className="card">
+        <div className={`ladder-row ${ladderOn ? 'on' : ''}`} data-testid="ladder-row">
+          <label><input type="checkbox" checked={ladderOn} disabled={listening} onChange={(e) => setLadderOn(e.target.checked)} data-testid="ladder-on" /> <b>템포 사다리</b></label>
+          {ladderOn && (
+            <span className="ladder-bpm">
+              <button className="mini" disabled={listening} onClick={() => setPlayBpm((b) => Math.max(30, b - LADDER_STEP))} aria-label="사다리 템포 내리기">−</button>
+              <b>♩={playBpm}</b>
+              <button className="mini" disabled={listening} onClick={() => setPlayBpm((b) => Math.min(200, b + LADDER_STEP))} aria-label="사다리 템포 올리기">+</button>
+              {score.ladder?.best ? <span className="muted small">최고 ♩={score.ladder.best}</span> : null}
+            </span>
+          )}
+        </div>
+        {!listening && <GearPicker />}
+        {ladderOn && <p className="hint">한 마디 세어 주는 템포에 맞춰 연주하세요. 맞은 음 90% 이상 + 템포를 지키면 통과, ♩+{LADDER_STEP}로 올라가요. 70% 아래면 한 칸 내려가요.</p>}
         {!listening ? (
           <button className="primary wide big" onClick={start} disabled={!expected.length} data-testid="score-start">● 이 구간 연주하고 채점받기</button>
         ) : (
@@ -618,7 +688,7 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
           <label className="small"><input type="checkbox" checked={scoreWithAcc} onChange={(e) => setScoreWithAcc(e.target.checked)} data-testid="score-with-acc" /> 반주를 틀고 같이 연주하며 채점 (이어폰을 쓰면 반주 소리가 섞이지 않아요)</label>
         )}
         {pitch.error && <p className="error">{pitch.error}</p>}
-        <p className="hint">템포는 상관없어요. 악보 순서대로 연주하면 음을 맞춰 보고, 음표 색으로 보여줘요. 초록 ±10센트 안, 노랑 ±20, 빨강 그 이상, 보라 다른 음, 회색 놓친 음. 박자도 함께 봐요: 내 템포에 맞춰 각 음이 일찍·늦게 들어갔는지.</p>
+        <p className="hint">{ladderOn ? '' : '템포는 상관없어요. '}악보 순서대로 연주하면 음을 맞춰 보고, 음표 색으로 보여줘요. 초록 ±10센트 안, 노랑 ±20, 빨강 그 이상, 보라 다른 음, 회색 놓친 음. 박자도 함께 봐요: 내 템포에 맞춰 각 음이 일찍·늦게 들어갔는지.</p>
       </div>
 
       </div>
@@ -661,6 +731,8 @@ function ScoreView({ score, onClose }: { score: ScoreFile; onClose: () => void }
             </div>
           )}
           {passMsg && <p className="good"><b>✓ {passMsg}</b></p>}
+          {ladderMsg && <p className={ladderMsg.pass ? 'good' : 'warn'} data-testid="ladder-msg"><b>{ladderMsg.pass ? '▲ ' : ''}{ladderMsg.text}</b></p>}
+          {reviewMsg && <p className="small" data-testid="review-msg"><b>복습함</b> {reviewMsg}</p>}
           {saved && <p className="small muted" data-testid="run-saved">✓ {saved}</p>}
           {shiftRes.length > 0 && (
             <p className="small" data-testid="shift-stats">

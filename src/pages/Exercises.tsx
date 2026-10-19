@@ -58,8 +58,9 @@ export function createArt(base: ArtBaseId, key: string, variant: string, o: Exer
 }
 
 /** 다른 탭(오늘의 연습)에서 악보 탭을 열며 연습곡을 바로 열 때 */
-let pending: (() => Promise<number>) | null = null;
-export const requestOpen = (fn: () => Promise<number>) => { pending = fn; };
+let pending: { fn: () => Promise<number>; exercises: boolean } | null = null;
+/** exercises = 닫으면 연습곡 목록으로 (내 악보를 열 때는 false) */
+export const requestOpen = (fn: () => Promise<number>, exercises = true) => { pending = { fn, exercises }; };
 export const takePending = () => { const p = pending; pending = null; return p; };
 
 export function artPrefs(): { base: ArtBaseId; key: string } {
@@ -156,7 +157,7 @@ export function Exercises({ onOpen, onBack }: { onOpen: (id: number) => void; on
 
       <div className="card" data-testid="art-card">
         <b>텅잉 · 슬러 연습 (아티큘레이션)</b>
-        <p className="hint">짧은 악구 하나를 16가지 텅잉·슬러 조합으로 바꿔 가며 연습해요. 채점은 음정만 하고, 혀와 슬러는 녹음해서 들어 보세요. 롱톤 탭의 "텅잉"에서 박에 맞춰 혀를 쓰는지도 잴 수 있어요. <b>이 악구 {artDone}/{ART_VARIANTS.length} 통과</b></p>
+        <p className="hint">짧은 악구 하나를 16가지 텅잉·슬러 조합으로 바꿔 가며 연습해요. 채점은 음정만 하고, 혀와 슬러는 녹음해서 들어 보세요. 기초 탭의 "텅잉"에서 박에 맞춰 혀를 쓰는지도 잴 수 있어요. <b>이 악구 {artDone}/{ART_VARIANTS.length} 통과</b></p>
         <div className="row-setting">
           <select value={artBase} onChange={(e) => setArtBase(e.target.value as ArtBaseId)} aria-label="기본 악구" data-testid="art-base">
             {ART_BASES.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}

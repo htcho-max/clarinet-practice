@@ -106,7 +106,7 @@ try {
     await page.getByTestId('session-save').click();
     await page.waitForTimeout(400);
     await tab(page, 'log');
-    await page.locator('.log .segmented').getByRole('button', { name: '연습 기록' }).click();
+    await page.locator('.log .segmented').getByRole('button', { name: '달력' }).click();
     await page.screenshot({ path: 'scripts/shot-log.png', fullPage: true });
     ok((await page.getByText('스모크 테스트').count()) >= 1, '세션 메모 저장');
     ok(await page.getByText(/곡 연습 · 루뱅크 3번/).isVisible(), '세션에 곡 이름 기록');
@@ -234,7 +234,7 @@ try {
     // 연습 기록 탭: 오늘 악보 연습 + 녹음 연동
     await page.getByTestId('play-toggle').click().catch(() => {});
     await tab(page, 'log');
-    await page.locator('.log .segmented').getByRole('button', { name: '연습 기록' }).click();
+    await page.locator('.log .segmented').getByRole('button', { name: '달력' }).click();
     ok(await seen(page.getByTestId('day-runs')), '달력 오늘 칸에 악보 연습 기록');
     await page.getByTestId('day-runs').locator('.rec-title').first().click();
     ok(await seen(page.getByTestId('day-runs').locator('audio')), '연습 기록에서 녹음 재생');
@@ -433,6 +433,106 @@ try {
     const top = await page.locator('.score-top').boundingBox(), main = await page.locator('.score-main').boundingBox();
     ok(!!top && !!main && main.x > top.x + top.width - 1, '태블릿 가로: 왼쪽 조작, 오른쪽 악보');
     await page.screenshot({ path: 'scripts/shot-tablet-score.png' });
+    ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
+    await browser.close();
+  }
+
+  // ── 8. v0.5 학습 기능: 템포 사다리·복습함·넘기·따라 불기·리드·분석·도돌이표 (악보음 C5 계속) ──
+  {
+    const { browser, page, errors } = await launch('bb466.wav');
+    await tab(page, 'score');
+    await page.getByTestId('score-file').setInputFiles(path.resolve('scripts/test-repeat.musicxml'));
+    await page.waitForTimeout(1500);
+    ok(await seen(page.getByTestId('unfold')), '도돌이표 있는 악보: "도돌이표대로" 보임');
+    await page.getByTestId('to').fill('2');
+    await page.waitForTimeout(500);
+    await page.getByTestId('play-bpm').fill('200');
+    await page.getByTestId('play-toggle').click();
+    await page.waitForTimeout(800);
+    await page.getByTestId('play-toggle').click().catch(() => {});
+    // 리드 추가 (이름, 세기 두 번 묻기)
+    let n = 0;
+    const onDialog = (d) => { d.accept(n++ === 0 ? '#7' : '반도린 3'); };
+    page.on('dialog', onDialog);
+    await page.getByTestId('gear-select').first().selectOption('new');
+    await page.waitForTimeout(600);
+    page.off('dialog', onDialog);
+    ok(/#7 · 반도린 3/.test(await page.getByTestId('gear-select').first().locator('option:checked').textContent()), '새 리드 추가하면 지금 리드로');
+    await page.getByTestId('ladder-on').check();
+    ok(/♩=/.test(await page.getByTestId('ladder-row').textContent()), '템포 사다리 켜기');
+    await page.getByTestId('score-start').click();
+    await page.waitForTimeout(6500);
+    await page.getByTestId('score-stop').click();
+    ok(await seen(page.getByTestId('ladder-msg'), 4000), `사다리 판정 (${await page.getByTestId('ladder-msg').textContent().catch(() => '')})`);
+    ok(await seen(page.getByTestId('review-msg'), 4000), `복습함에 넣음 (${await page.getByTestId('review-msg').textContent().catch(() => '')})`);
+    await page.screenshot({ path: 'scripts/shot-ladder.png', fullPage: true });
+    // 오늘의 연습: 내일 복습이라 오늘은 없음 → 날짜를 하루 당겨 확인
+    await page.evaluate(async () => {
+      const req = indexedDB.open('clarinet-practice');
+      await new Promise((res) => { req.onsuccess = res; });
+      const db = req.result; const tx = db.transaction('reviews', 'readwrite'); const st = tx.objectStore('reviews');
+      const all = await new Promise((res) => { const g = st.getAll(); g.onsuccess = () => res(g.result); });
+      for (const r of all) st.put({ ...r, due: '2000-01-01' });
+      await new Promise((res) => { tx.oncomplete = res; });
+    });
+    await page.reload(); // 앱(Dexie)의 조회 캐시를 비우려고
+    await page.waitForTimeout(800);
+    await tab(page, 'today');
+    ok(await seen(page.getByTestId('review-card')), '오늘의 연습에 틀린 마디 복습');
+    await page.screenshot({ path: 'scripts/shot-review.png', fullPage: true });
+    await page.getByTestId('review-open').first().click();
+    ok(await seen(page.getByTestId('score-view'), 5000), '복습 마디 누르면 악보 열림');
+    const rh = await seen(page.getByTestId('review-here'), 6000);
+    ok(rh, '악보에 오늘 복습할 마디');
+    const f = await page.getByTestId('from').inputValue(), t = await page.getByTestId('to').inputValue();
+    ok(f === '1' && t === '2', `이어진 복습 마디를 한 구간으로 (${f}~${t})`);
+    // 넘기
+    await tab(page, 'tone');
+    await page.getByTestId('mode-break').click();
+    await page.getByTestId('break-start').click();
+    await page.waitForTimeout(2000);
+    await page.getByTestId('break-stop').click();
+    ok(await seen(page.getByTestId('break-result')), '넘기 결과 (한 음만 불면 넘기 0번)');
+    ok(/번갈아/.test(await page.getByTestId('break-result').textContent()), '넘기 안내');
+    await page.screenshot({ path: 'scripts/shot-break.png', fullPage: true });
+    // 따라 불기
+    await page.getByTestId('mode-echo').click();
+    await page.getByTestId('echo-new').click();
+    await page.waitForFunction(() => /따라 불어요/.test(document.querySelector('[data-testid=echo-phase]')?.textContent ?? ''), null, { timeout: 8000 }).catch(() => {});
+    ok(/따라 불어요/.test(await page.getByTestId('echo-phase').textContent()), '문제를 들려준 뒤 듣기');
+    await page.waitForTimeout(1500);
+    await page.getByTestId('echo-stop').click();
+    ok(await seen(page.getByTestId('echo-result')), `따라 불기 채점 (${(await page.getByTestId('echo-result').textContent().catch(() => '')).slice(0, 40)})`);
+    await page.screenshot({ path: 'scripts/shot-echo.png', fullPage: true });
+    // 분석
+    await tab(page, 'log');
+    await page.getByTestId('log-insights').click();
+    ok(await seen(page.getByTestId('trends')), '주별 추이');
+    ok(await seen(page.getByTestId('habits')), '음정 습관 지도');
+    ok(await seen(page.getByTestId('gear-card').getByText('#7')), '리드 기록 표');
+    await page.screenshot({ path: 'scripts/shot-insights.png', fullPage: true });
+    await page.getByTestId('trends-table').click();
+    ok((await page.getByTestId('trends').locator('tbody tr').count()) === 8, '추이 표 8주');
+    ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
+    await browser.close();
+  }
+
+  // ── 9. 넘기 (A4 ↔ B4, 끊김·끽 소리 섞임) ──
+  {
+    const { browser, page, errors } = await launch('break.wav');
+    await tab(page, 'tone');
+    await page.getByTestId('mode-break').click();
+    await page.getByTestId('break-start').click();
+    await page.waitForTimeout(7000);
+    await page.getByTestId('break-stop').click().catch(() => {});
+    ok(await seen(page.getByTestId('break-result')), '넘기 결과');
+    const r = await page.getByTestId('break-result').textContent();
+    console.log('  넘기 결과:', r.slice(0, 140));
+    const [clean, total] = (await page.getByTestId('break-clean').textContent()).split('/').map(Number);
+    ok(total >= 6, `넘은 횟수 ${total} (7초에 약 11번)`);
+    ok(clean >= 2 && clean < total, `깨끗하게 ${clean}/${total} (0.06초 끊김만 깨끗)`);
+    ok(/끽 소리 \d+번/.test(r), '끽 소리 찾음');
+    await page.screenshot({ path: 'scripts/shot-break-result.png', fullPage: true });
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
     await browser.close();
   }

@@ -8,6 +8,7 @@ import { Recordings, RecPlayerById } from './Recordings';
 import { useBackLayer } from '../state/back';
 import { useScoreRuns, runText } from '../state/useScoreRuns';
 import { clock } from '../data/dates';
+import { Insights } from './Insights';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -19,7 +20,7 @@ function level(sec: number): number {
   return 4;
 }
 
-type View = 'calendar' | 'pieces' | 'recordings';
+type View = 'calendar' | 'insights' | 'pieces' | 'recordings';
 
 export function Log() {
   const [view, setView] = useState<View>(() => { try { return (localStorage.getItem('clarinet-log-view') as View) || 'calendar'; } catch { return 'calendar'; } });
@@ -28,11 +29,13 @@ export function Log() {
   return (
     <section className="page log">
       <div className="segmented">
-        <button className={view === 'calendar' ? 'on' : ''} onClick={() => go('calendar')}>연습 기록</button>
+        <button className={view === 'calendar' ? 'on' : ''} onClick={() => go('calendar')}>달력</button>
+        <button className={view === 'insights' ? 'on' : ''} onClick={() => go('insights')} data-testid="log-insights">분석</button>
         <button className={view === 'pieces' ? 'on' : ''} onClick={() => go('pieces')}>곡</button>
         <button className={view === 'recordings' ? 'on' : ''} onClick={() => go('recordings')}>녹음</button>
       </div>
       {view === 'calendar' && <Calendar />}
+      {view === 'insights' && <Insights />}
       {view === 'pieces' && <Pieces />}
       {view === 'recordings' && <Recordings />}
     </section>

@@ -13,7 +13,7 @@ import { Score } from './pages/Score';
 import { useSettings } from './state/settings';
 import { useBackLayer, setExitWarning, restoreGuard } from './state/back';
 
-const TITLES: Record<TabId, string> = { today: '오늘의 연습', tuner: '튜너', fingering: '운지표', tone: '롱톤 · 텅잉', metronome: '메트로놈', score: '악보', log: '연습 기록' };
+const TITLES: Record<TabId, string> = { today: '오늘의 연습', tuner: '튜너', fingering: '운지표', tone: '기초 연습', metronome: '메트로놈', score: '악보', log: '연습 기록' };
 
 export function App({ updatedFrom = null }: { updatedFrom?: string | null }) {
   const [toast, setToast] = useState<string | null>(updatedFrom ? `새 버전으로 업데이트됐어요 · ${__APP_VERSION__}` : null);

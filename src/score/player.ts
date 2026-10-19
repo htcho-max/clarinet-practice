@@ -23,7 +23,11 @@ export const instFor = (name: string): 'clarinet' | 'piano' => (/piano|klavier|�
  * 반주 파트: 악보에 적힌 이조 값 (피아노는 0)
  */
 export const mainShift = (s: ParsedScore) => (s.transpose !== 0 ? s.transpose : -getTranspose());
-export interface PlanOptions { bpm: number; from: number; to: number; countIn: boolean; /** 셈여림·쐐기·스타카토·이음줄·늘임표·rit. 살리기 */ expressive?: boolean }
+export interface PlanOptions {
+  bpm: number; from: number; to: number; countIn: boolean;
+  /** 셈여림·쐐기·스타카토·이음줄·늘임표·rit. 살리기 */ expressive?: boolean;
+  /** 마디 순서 (도돌이표 펼치기, playOrder). 없으면 악보 순서대로 한 번씩 */ order?: number[];
+}
 
 /** 셈여림 기호 → 소리 크기 (0~1) */
 export const DYN_LEVEL: Record<string, number> = { pppp: 0.22, ppp: 0.27, pp: 0.33, p: 0.45, mp: 0.58, mf: 0.7, f: 0.85, ff: 0.97, fff: 1.05, ffff: 1.1, fp: 0.45 };
@@ -84,20 +88,22 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
   const [beats, unit] = s.time;
   const beatQ = 4 / unit; // 한 박 = 4분음표 몇 개
   const countQ = o.countIn ? beats * beatQ : 0;
-  const start = new Map<number, number>();
+  // 마디 순서대로 시작 위치 (도돌이표를 펼치면 같은 마디가 여러 번)
+  const segs: { m: number; Q0: number }[] = [];
   let acc = countQ;
-  for (const m of s.measures) {
+  for (const m of o.order ?? s.measures) {
     if (m < o.from || m > o.to) continue;
-    start.set(m, acc);
+    segs.push({ m, Q0: acc });
     acc += s.measureLen.get(m) ?? beats * beatQ;
   }
+  const notesOf = new Map<number, number[]>();
+  s.notes.forEach((n, i) => { const a = notesOf.get(n.measure) ?? []; a.push(i); notesOf.set(n.measure, a); });
   const ex = o.expressive ? expressNotes(s) : null;
-  const inRange = s.notes.map((n, i) => ({ n, i })).filter(({ n }) => start.has(n.measure));
+  const inRange = segs.flatMap((g) => (notesOf.get(g.m) ?? []).map((i) => ({ n: s.notes[i], i, Q: g.Q0 + s.notes[i].beat })));
   // 4분음표 위치 → 초. 표현을 살리면 음마다 빠르기 배율(rit.)과 늘임표(그 음 끝에 더 머묾)를 반영
   const bps: { Q: number; t: number; f: number }[] = [{ Q: 0, t: 0, f: 1 }];
   if (ex) {
-    for (const { n, i } of inRange) {
-      const Q = start.get(n.measure)! + n.beat;
+    for (const { n, i, Q } of inRange) {
       const last = bps[bps.length - 1];
       if (Q < last.Q - 1e-9) continue;
       const t = last.t + ((Q - last.Q) * q) / last.f;
@@ -116,8 +122,7 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
     return bps[k].t + ((Q - bps[k].Q) * q) / bps[k].f;
   };
   const shift = mainShift(s);
-  const events: PlayEvent[] = inRange.map(({ n }) => {
-    const Q = start.get(n.measure)! + n.beat;
+  const events: PlayEvent[] = inRange.map(({ n, Q }) => {
     const time = qToT(Q);
     return { note: n, time, dur: qToT(Q + n.dur) - time, shift };
   });
@@ -145,9 +150,10 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
   }
   const accEv: PlayEvent[] = [];
   for (const ap of accParts) {
-    for (const n of ap.score.notes) {
-      if (!start.has(n.measure)) continue;
-      const Q = start.get(n.measure)! + n.beat;
+    const accOf = new Map<number, typeof ap.score.notes>();
+    for (const n of ap.score.notes) { const a = accOf.get(n.measure) ?? []; a.push(n); accOf.set(n.measure, a); }
+    for (const g of segs) for (const n of accOf.get(g.m) ?? []) {
+      const Q = g.Q0 + n.beat;
       const time = qToT(Q);
       accEv.push({ note: n, time, dur: qToT(Q + n.dur) - time, inst: ap.inst, shift: ap.score.transpose });
     }

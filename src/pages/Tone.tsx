@@ -19,22 +19,19 @@ import { useAudioStatus, setAudioStatus } from '../state/audioStatus';
 import { useWakeLock } from '../state/wakeLock';
 import { db, type ToneRun } from '../data/db';
 import { localDate } from '../data/dates';
+import { currentGearId } from '../state/useGear';
+import { useToneRuns } from '../state/useToneRuns';
+import { GearPicker } from '../components/GearPicker';
+import { BreakTrainer } from './BreakTrainer';
+import { EchoTrainer } from './EchoTrainer';
 
-type Mode = 'long' | 'tongue' | 'graph';
+type Mode = 'long' | 'tongue' | 'break' | 'echo' | 'graph';
 type Ref = 'equal' | 'just';
 
 const fmt = (c: number | null) => (c === null ? '—' : centsText(c));
 const tone = (c: number | null) => (c === null ? '' : Math.abs(c) <= 5 ? 'good' : Math.abs(c) <= 15 ? 'warn' : 'bad');
 const koName = (midi: number) => NOTE_NAMES_KO[NOTE_NAMES[((midi % 12) + 12) % 12]];
 
-function useToneRuns(kind: 'long' | 'tongue'): ToneRun[] {
-  const [rows, setRows] = useState<ToneRun[]>([]);
-  useEffect(() => {
-    const sub = liveQuery(() => db.toneRuns.where('kind').equals(kind).reverse().sortBy('createdAt')).subscribe({ next: setRows, error: () => {} });
-    return () => sub.unsubscribe();
-  }, [kind]);
-  return rows;
-}
 
 export function Tone() {
   const { settings } = useSettings();
@@ -50,11 +47,16 @@ export function Tone() {
       <div className="segmented">
         <button className={mode === 'long' ? 'on' : ''} onClick={() => setMode('long')} data-testid="mode-long">롱톤</button>
         <button className={mode === 'tongue' ? 'on' : ''} onClick={() => setMode('tongue')} data-testid="mode-tongue">텅잉</button>
+        <button className={mode === 'break' ? 'on' : ''} onClick={() => setMode('break')} data-testid="mode-break">넘기</button>
+        <button className={mode === 'echo' ? 'on' : ''} onClick={() => setMode('echo')} data-testid="mode-echo">따라 불기</button>
         <button className={mode === 'graph' ? 'on' : ''} onClick={() => setMode('graph')} data-testid="mode-graph">음정·드론</button>
       </div>
-      {mode !== 'tongue' && <DroneCard root={root} setRoot={setRoot} open={mode === 'graph' && !pitch.on} />}
+      {mode !== 'graph' && <GearPicker />}
+      {(mode === 'long' || mode === 'graph') && <DroneCard root={root} setRoot={setRoot} open={mode === 'graph' && !pitch.on} />}
       {mode === 'long' && <LongTone pitch={pitch} />}
       {mode === 'tongue' && <Tonguing pitch={pitch} />}
+      {mode === 'break' && <BreakTrainer pitch={pitch} />}
+      {mode === 'echo' && <EchoTrainer pitch={pitch} />}
       {mode === 'graph' && <PitchGraph pitch={pitch} root={root} />}
     </section>
   );
@@ -157,6 +159,7 @@ function LongTone({ pitch }: { pitch: ReturnType<typeof usePitch> }) {
       createdAt: Date.now(), date: localDate(), kind: 'long', midi: r.midi, pattern, durationSec: Math.round(r.durationSec * 10) / 10,
       meanCents: Math.round(r.meanCents * 10) / 10, centsSD: Math.round(r.centsSD * 10) / 10, dbSD: Math.round(r.dbSD * 10) / 10,
       dbRange: Math.round(r.dbRange), centsPerDb: r.centsPerDb === null ? null : Math.round(r.centsPerDb * 100) / 100,
+      gearId: await currentGearId(),
     });
   }
   async function start() {
@@ -356,8 +359,8 @@ function Tonguing({ pitch }: { pitch: ReturnType<typeof usePitch> }) {
       setPhase('done');
       setBeatNow(-1);
       if (r.hits >= 2) {
-        db.toneRuns.add({ createdAt: Date.now(), date: localDate(), kind: 'tongue', bpm, perBeat, hits: r.hits, expected: r.expected,
-          meanAbsMs: r.meanAbsMs === null ? null : Math.round(r.meanAbsMs), evenPct: r.evenPct === null ? null : Math.round(r.evenPct * 10) / 10 });
+        void currentGearId().then((gearId) => db.toneRuns.add({ createdAt: Date.now(), date: localDate(), kind: 'tongue', bpm, perBeat, hits: r.hits, expected: r.expected,
+          meanAbsMs: r.meanAbsMs === null ? null : Math.round(r.meanAbsMs), evenPct: r.evenPct === null ? null : Math.round(r.evenPct * 10) / 10, gearId }));
       }
     }, (end + 0.35 - ctx.currentTime) * 1000));
   }

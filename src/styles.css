@@ -390,7 +390,7 @@ button.mini.on { border-color: var(--accent); color: var(--accent); font-weight:
   .page.tone { max-width: 1100px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 16px; align-items: start; grid-auto-flow: row dense; }
   .page.tone > .segmented { grid-column: 1 / -1; }
   .page.tone > * { grid-column: 1; }
-  .page.tone > .longtone-live, .page.tone > [data-testid=lt-result], .page.tone > .tongue-live, .page.tone > [data-testid=tongue-result] { grid-column: 2; }
+  .page.tone > .longtone-live, .page.tone > [data-testid=lt-result], .page.tone > .tongue-live, .page.tone > [data-testid=tongue-result], .page.tone > .break-live, .page.tone > [data-testid=break-result], .page.tone > .echo-live { grid-column: 2; }
 }
 
 /* 플룻: 가로 운지 그림은 카드 폭에 맞춤 */
@@ -400,3 +400,50 @@ button.mini.on { border-color: var(--accent); color: var(--accent); font-weight:
 @media (min-width: 720px) { .fg-card .fingering.flute { width: 100%; } }
 
 .inst-chip { color: var(--accent); margin-top: 2px; }
+
+/* ---------- v0.5: 복습함 · 템포 사다리 · 넘기 · 따라 불기 · 분석 ---------- */
+:root { --sharp: #c2410c; --flat: #2563eb; }
+@media (prefers-color-scheme: dark) { :root { --sharp: #fb923c; --flat: #60a5fa; } }
+.review-here { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.review-group { margin-top: 6px; }
+.ladder-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.ladder-row.on { padding: 6px 8px; border-radius: 10px; background: var(--surface-2); }
+.ladder-bpm { display: inline-flex; align-items: center; gap: 6px; }
+.gear-picker { display: flex; align-items: center; gap: 8px; }
+.gear-picker select { flex: 1; min-height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); padding: 4px 8px; }
+.page.tone > .segmented button { padding: 4px 2px; font-size: 14px; }
+.break-fing { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 8px 0; }
+.break-fing > div { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.break-arrow { font-size: 28px; color: var(--muted); }
+.crossing-bars { width: 100%; height: 56px; margin: 6px 0; }
+.crossing-bars .bar.good { fill: var(--good); } .crossing-bars .bar.warn { fill: var(--warn); } .crossing-bars .bar.bad { fill: var(--bad); }
+.crossing-bars .axis, .trend-bars .axis { stroke: var(--line); stroke-dasharray: 3 3; }
+.echo-dots { display: flex; justify-content: center; gap: 10px; padding: 18px 0; }
+.echo-dots .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); }
+.echo-dots .dot.past { background: var(--accent); border-color: var(--accent); }
+.echo-heard { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 6px 0; }
+.echo-table th { width: 64px; } .echo-table td { text-align: center; font-weight: 600; }
+.echo-live .mini-staff { display: block; margin: 0 auto; }
+.trend-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 8px; }
+.trend { display: flex; flex-direction: column; gap: 2px; }
+.trend-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.trend-bars { width: 100%; height: 44px; }
+.trend-bars .bar { fill: var(--accent); opacity: 0.45; }
+.trend-bars .bar.now { opacity: 1; }
+.trend-bars .hit { fill: transparent; }
+.trend-bars g:hover .bar { opacity: 0.8; }
+.tbl-wrap { overflow-x: auto; }
+.habit-legend { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0 8px; }
+.habit-legend .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.sw.sharp, .hbar .fill.sharp { background: var(--sharp); } .sw.flat, .hbar .fill.flat { background: var(--flat); }
+.hbar .fill.ok { background: var(--muted); }
+.habit-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.habit-list li { display: grid; grid-template-columns: 44px 1fr 72px; align-items: center; gap: 8px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.hbar { position: relative; height: 12px; background: var(--surface-2); border-radius: 6px; }
+.hbar .zero { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
+.hbar .fill { position: absolute; top: 2px; bottom: 2px; border-radius: 4px; min-width: 2px; }
+.hv { text-align: right; }
+.habit-tips { margin-top: 10px; }
+.gear-tbl td { vertical-align: top; }
+.gear-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.gear-tbl .badge { margin-left: 6px; }

@@ -3,6 +3,7 @@
 //  phrases.wav  : 악보음 A4 B4(+12) C#5(-6) D5 | B4 D5 → 실음은 2반음 아래 (악보 채점·음정 그래프)
 //  longtone.wav : 1초 쉼 → 악보음 G4(실음 F4) +5센트 6초, 점점 크게 → 1.5초 쉼 (롱톤)
 //  tongue.wav   : 악보음 C5 를 0.25초마다 혀로 끊기 (텅잉)
+//  break.wav    : 악보음 A4 ↔ B4 넘기. 0.06초 끊김(올라감) · 0.2초 끊김(내려옴) · 끽 소리 F♯6 0.12초 끼고 올라감 · 0.06초(내려옴) 되풀이 (넘기)
 import { writeFileSync } from 'node:fs';
 const sr = 48000, H = [1, 0.08, 0.55, 0.05, 0.32, 0.04, 0.2, 0.03, 0.12];
 const f = (m, c = 0) => 442 * 2 ** ((m - 69) / 12 + c / 1200); // 앱 기본 A=442 (뷔페 B12)
@@ -48,3 +49,9 @@ write('tongue.wav', 12, () => f(W(72)), (t) => ((t % 0.25) < 0.03 ? 0 : 1));
   for (let i = 0; i < n; i++) { let v = 0; HF.forEach((a, k) => { v += a * Math.sin(2 * Math.PI * fr * (k + 1) * i / sr); }); v += (Math.random() - 0.5) * 0.02; buf.writeInt16LE(Math.round(v * 0.2 * 32767), 44 + i * 2); }
   writeFileSync('scripts/fl_a4.wav', buf);
 }
+
+// 넘기: [음, 길이] 한 바퀴 2.44초 × 4
+const cyc = [[69, 0.5], [null, 0.06], [71, 0.5], [null, 0.2], [69, 0.5], [90, 0.12], [71, 0.5], [null, 0.06]];
+const segs = []; let t0 = 0;
+for (let k = 0; k < 4; k++) for (const [m, d] of cyc) { segs.push([t0, t0 + d, m]); t0 += d; }
+write('break.wav', t0, (t) => { const s = segs.find(([a, b]) => t >= a && t < b); return s && s[2] !== null ? f(W(s[2])) : null; });

@@ -3,7 +3,7 @@ export const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'today', label: '오늘', icon: '◎' },
   { id: 'tuner', label: '튜너', icon: '♮' },
   { id: 'fingering', label: '운지', icon: '⠿' },
-  { id: 'tone', label: '롱톤', icon: '∿' },
+  { id: 'tone', label: '기초', icon: '∿' },
   { id: 'metronome', label: '메트로놈', icon: '♩' },
   { id: 'score', label: '악보', icon: '♬' },
   { id: 'log', label: '기록', icon: '▦' },
