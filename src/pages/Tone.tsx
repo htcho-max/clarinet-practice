@@ -1,3 +1,4 @@
+import { useToday } from '../state/useToday';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { liveQuery } from 'dexie';
 import { drone } from '../audio/drone';
@@ -132,7 +133,7 @@ function LongTone({ pitch }: { pitch: ReturnType<typeof usePitch> }) {
   const [, tick] = useState(0);
   const live = useRef<{ t: number; cents: number | null }[]>([]);
   const runs = useToneRuns('long');
-  const today = localDate();
+  const today = useToday();
   const best = runs.reduce((a, r) => Math.max(a, r.durationSec ?? 0), 0);
   const bestToday = runs.filter((r) => r.date === today).reduce((a, r) => Math.max(a, r.durationSec ?? 0), 0);
 

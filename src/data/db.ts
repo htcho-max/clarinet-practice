@@ -85,6 +85,23 @@ export interface ScoreRun {
   ladderBpm?: number;
   /** 그때 쓴 리드(플룻은 헤드조인트 위치) */
   gearId?: number;
+  /** 음마다 결과 (지난 기록 다시 보기·셈여림 비교에 씀) */
+  notes?: import('../score/practice').RunNote[];
+}
+/** 레슨 노트: 선생님이 짚어 준 것 (곡·마디에 붙일 수 있음) */
+export interface LessonNote {
+  id?: number;
+  createdAt: number;
+  /** 레슨 날짜 YYYY-MM-DD */
+  date: string;
+  scoreId?: number;
+  /** 보여줄 곡 이름 (악보 제목) */
+  scoreTitle?: string;
+  pieceId?: string;
+  measure?: number;
+  text: string;
+  done: boolean;
+  doneAt?: number;
 }
 /** 롱톤·텅잉 한 번의 기록 */
 export interface ToneRun {
@@ -170,7 +187,17 @@ export interface ScoreFile {
   exercise?: ExerciseMeta;
   /** 템포 사다리: 지금 목표 템포, 통과한 가장 빠른 템포 */
   ladder?: { bpm: number; best: number; at: number };
+  /** 앱에서 음을 고치기 전 처음 악보 (처음 고칠 때 한 번 저장) */
+  origXml?: string;
+  /** 목록용 가벼운 열쇠 (자동으로 채움): 악보 XML 을 읽지 않고 목록을 그리려고 인덱스에 넣음 */
+  listKey?: ScoreListKey;
 }
+/** [만든 시각, 제목, 폴더, 곡 id, 연습곡이면 1] */
+export type ScoreListKey = [number, string, string, string, number];
+/** 목록에 쓰는 악보 정보 (XML 없이) */
+export interface ScoreMeta { id: number; createdAt: number; title: string; folder?: string; pieceId?: string; exercise: boolean }
+export const scoreListKey = (s: Partial<ScoreFile>): ScoreListKey => [s.createdAt ?? 0, s.title ?? '', s.folder ?? '', s.pieceId ?? '', s.exercise ? 1 : 0];
+export const metaFromKey = (id: number, k: ScoreListKey): ScoreMeta => ({ id, createdAt: k[0], title: k[1], folder: k[2] || undefined, pieceId: k[3] || undefined, exercise: k[4] === 1 });
 export interface ExerciseMeta { stepId: string; spec: import('../exercise/curriculum').ExerciseSpec; seed: number; breakKeys: string[]; tip?: string; tempo: number; progressId?: string }
 export interface ExerciseProgress { best: number; mean: number | null; passed: boolean; at: number; bpm?: number; tries: number }
 
@@ -185,6 +212,7 @@ class PracticeDB extends Dexie {
   toneRuns!: Table<ToneRun, number>;
   reviews!: Table<ReviewItem, string>;
   gear!: Table<Gear, number>;
+  lessonNotes!: Table<LessonNote, number>;
   constructor() {
     super(P.dbName);
     this.version(1).stores({
@@ -202,7 +230,28 @@ class PracticeDB extends Dexie {
     // 연습곡 단계로 바로 찾기 (악보 XML 을 모두 읽지 않게)
     this.version(6).stores({ scores: '++id, createdAt, pieceId, exercise.stepId' });
     this.version(7).stores({ reviews: 'id, due, scoreId', gear: '++id, createdAt' });
+    // 목록을 XML 없이 읽기: listKey 인덱스의 열쇠만 읽음
+    this.version(8).stores({ scores: '++id, createdAt, pieceId, exercise.stepId, listKey' }).upgrade((tx) =>
+      tx.table('scores').toCollection().modify((s: ScoreFile) => { s.listKey = scoreListKey(s); }));
+    this.version(9).stores({ lessonNotes: '++id, date, scoreId, createdAt' });
+    // 악보를 넣거나 고칠 때 listKey 를 늘 맞춰 둠 (가져오기·백업 되돌리기·폴더 옮기기 모두)
+    this.scores.hook('creating', (_pk, obj) => { obj.listKey = scoreListKey(obj); });
+    this.scores.hook('updating', (mods, _pk, obj) => {
+      const m = mods as Record<string, unknown>;
+      if (!['createdAt', 'title', 'folder', 'pieceId', 'exercise'].some((k) => k in m) && !Object.keys(m).some((k) => k.startsWith('exercise.'))) return;
+      const next: Partial<ScoreFile> = { ...obj };
+      for (const [k, v] of Object.entries(m)) if (!k.includes('.')) (next as Record<string, unknown>)[k] = v;
+      if ('exercise' in m && m.exercise === undefined) delete next.exercise;
+      return { listKey: scoreListKey(next) };
+    });
   }
 }
 
 export const db = new PracticeDB();
+
+/** 악보 목록: XML 은 읽지 않고 listKey 인덱스 열쇠만 읽음 (악보가 많아도 빠르게) */
+export async function loadScoreList(): Promise<ScoreMeta[]> {
+  const c = () => db.scores.orderBy('listKey').reverse();
+  const [keys, ids] = await Promise.all([c().keys(), c().primaryKeys()]);
+  return keys.map((k, i) => metaFromKey(ids[i] as number, k as unknown as ScoreListKey));
+}

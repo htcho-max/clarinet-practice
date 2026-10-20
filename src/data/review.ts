@@ -4,10 +4,13 @@ import { addDays } from './dates';
 
 /** 복습 간격 (일). box 0 → 1일 뒤, … 마지막 칸을 넘으면 졸업 */
 export const REVIEW_DAYS = [1, 2, 4, 7, 14, 30];
-/** 마디가 "틀림"이 되는 음정 기준 (센트, 맞은 음 평균) */
-const WEAK_CENTS = 20;
-/** "깨끗함" 기준 */
-const CLEAN_CENTS = 15;
+/**
+ * 음정 판정 기준 (설정의 엄격·보통·관대). 마디가 "틀림" = 맞은 음 평균이 노랑 한계(warn) 밖,
+ * "깨끗함" = 모두 맞고 평균이 초록과 노랑 한계의 가운데 안 (보통이면 ±20 / ±15)
+ */
+export interface PitchLimits { good: number; warn: number }
+const NORMAL: PitchLimits = { good: 10, warn: 20 };
+const cleanLimit = (t: PitchLimits) => (t.good + t.warn) / 2;
 
 export interface MeasureStat { measure: number; total: number; ok: number; meanAbs: number | null }
 
@@ -28,8 +31,8 @@ export function measureStats(rs: Scored[]): MeasureStat[] {
   }
   return [...by.values()].map(({ sum, ...s }) => ({ ...s, meanAbs: s.ok ? sum / s.ok : null }));
 }
-export const isWeak = (m: MeasureStat) => m.total > 0 && (m.ok < m.total || (m.meanAbs ?? 0) > WEAK_CENTS);
-export const isClean = (m: MeasureStat) => m.total > 0 && m.ok === m.total && (m.meanAbs === null || m.meanAbs <= CLEAN_CENTS);
+export const isWeak = (m: MeasureStat, t: PitchLimits = NORMAL) => m.total > 0 && (m.ok < m.total || (m.meanAbs ?? 0) > t.warn);
+export const isClean = (m: MeasureStat, t: PitchLimits = NORMAL) => m.total > 0 && m.ok === m.total && (m.meanAbs === null || m.meanAbs <= cleanLimit(t));
 
 export interface ReviewChange { put: ReviewItem[]; del: string[]; added: number[]; again: number[]; advanced: number[]; graduated: number[] }
 
@@ -39,14 +42,14 @@ export interface ReviewChange { put: ReviewItem[]; del: string[]; added: number[
  * - 복습 날이 된 마디를 깨끗하게 치면 다음 칸으로 (마지막 칸이면 졸업)
  * - 아직 복습 날이 아닌 마디는 깨끗해도 그대로 (하루에 여러 번 쳐서 졸업하지 않게)
  */
-export function reviewChanges(existing: Map<string, ReviewItem>, stats: MeasureStat[], scoreId: number, title: string, today: string): ReviewChange {
+export function reviewChanges(existing: Map<string, ReviewItem>, stats: MeasureStat[], scoreId: number, title: string, today: string, tol: PitchLimits = NORMAL): ReviewChange {
   const out: ReviewChange = { put: [], del: [], added: [], again: [], advanced: [], graduated: [] };
   for (const s of stats) {
     const id = `${scoreId}:${s.measure}`;
     const cur = existing.get(id);
     const pct = Math.round((s.ok / s.total) * 100);
     const base = { last: today, lastPct: pct, lastCents: s.meanAbs === null ? null : Math.round(s.meanAbs) };
-    if (isWeak(s)) {
+    if (isWeak(s, tol)) {
       if (cur) {
         out.put.push({ ...cur, ...base, title, box: 0, due: addDays(today, REVIEW_DAYS[0]) });
         if (cur.due <= today || cur.box > 0) out.again.push(s.measure);
@@ -54,7 +57,7 @@ export function reviewChanges(existing: Map<string, ReviewItem>, stats: MeasureS
         out.put.push({ id, scoreId, measure: s.measure, title, box: 0, due: addDays(today, REVIEW_DAYS[0]), added: today, ...base });
         out.added.push(s.measure);
       }
-    } else if (cur && cur.due <= today && isClean(s)) {
+    } else if (cur && cur.due <= today && isClean(s, tol)) {
       const box = cur.box + 1;
       if (box >= REVIEW_DAYS.length) { out.del.push(id); out.graduated.push(s.measure); } else {
         out.put.push({ ...cur, ...base, title, box, due: addDays(today, REVIEW_DAYS[box]) });
@@ -112,13 +115,15 @@ export function noteCentsOf(rs: Scored[]): [number, number, number][] {
 }
 
 /** 템포 사다리 판정 */
-export interface LadderInput { pct: number; target: number; bpm: number | null; rhythmMeanAbs: number | null }
+export interface LadderInput { pct: number; target: number; bpm: number | null; rhythmMeanAbs: number | null; /** 맞은 음 평균 음정 오차 (센트). 판정 기준의 노랑 한계 안이어야 통과 */ meanAbs?: number | null; tol?: PitchLimits }
 export interface LadderVerdict { pass: boolean; next: number; msg: string }
 export const LADDER_STEP = 4;
 export function ladderVerdict(o: LadderInput, max = 200): LadderVerdict {
   const slow = o.bpm !== null && o.bpm < o.target * 0.92;
   const loose = o.rhythmMeanAbs !== null && o.rhythmMeanAbs > 0.12;
-  if (o.pct >= 90 && !slow && !loose) {
+  const t = o.tol ?? NORMAL;
+  const offPitch = o.meanAbs !== undefined && o.meanAbs !== null && o.meanAbs > t.warn;
+  if (o.pct >= 90 && !slow && !loose && !offPitch) {
     const next = Math.min(max, o.target + LADDER_STEP);
     return { pass: true, next, msg: `통과! ♩=${o.target} 성공 → 다음은 ♩=${next}` };
   }
@@ -126,7 +131,7 @@ export function ladderVerdict(o: LadderInput, max = 200): LadderVerdict {
     const next = Math.max(30, o.target - LADDER_STEP);
     return { pass: false, next, msg: `맞은 음 ${o.pct}% — 한 칸 내려서 ♩=${next} 로 다시 해 봐요` };
   }
-  const why = o.pct < 90 ? `맞은 음 ${o.pct}% (90% 이상이면 통과)` : slow ? `내 템포 ♩≈${Math.round(o.bpm!)} 로 목표보다 느렸어요` : '박자가 조금 흔들렸어요';
+  const why = o.pct < 90 ? `맞은 음 ${o.pct}% (90% 이상이면 통과)` : offPitch ? `음정 평균 ±${Math.round(o.meanAbs!)}센트 (±${t.warn} 안이면 통과)` : slow ? `내 템포 ♩≈${Math.round(o.bpm!)} 로 목표보다 느렸어요` : '박자가 조금 흔들렸어요';
   return { pass: false, next: o.target, msg: `${why} — ♩=${o.target} 에서 한 번 더` };
 }
 

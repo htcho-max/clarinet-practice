@@ -132,6 +132,7 @@ try {
         // 백업 → 되돌리기
     await tab(page, 'today');
     await page.getByRole('button', { name: '설정' }).click();
+    ok(await seen(page.getByTestId('set-tol-normal')) && await seen(page.getByTestId('latency')), '설정: 음정 판정 기준·이어폰 지연 보정');
     const [dl] = await Promise.all([page.waitForEvent('download'), page.getByTestId('backup').click()]);
     const fp = await dl.path();
     const fs = await import('node:fs');
@@ -166,8 +167,12 @@ try {
     ok((await page.locator('[data-testid=osmd] svg').count()) >= 1, '악보 그리기');
     await page.getByTestId('to').fill('2');
     await page.waitForTimeout(800);
+    ok(await seen(page.getByTestId('tol-normal')) && /\bon\b/.test(await page.getByTestId('tol-normal').getAttribute('class')), '판정 기준 칩 (기본 보통)');
     await page.getByTestId('score-start').click();
-    await page.waitForTimeout(5200);
+    await page.waitForTimeout(2500);
+    const lp = await page.getByTestId('live-pitch').first().textContent().catch(() => '');
+    ok(/[A-G]/.test(lp ?? ''), `채점 중 지금 내는 음 (${lp})`);
+    await page.waitForTimeout(2700);
     await page.getByTestId('score-stop').click();
     await page.waitForTimeout(1200);
     const res = await page.getByTestId('score-result').textContent();
@@ -176,6 +181,74 @@ try {
     ok(/B4\+1[0-4]/.test(res), 'B4 +12센트를 가장 벗어난 음으로 표시');
     ok(/녹음/.test(await page.getByTestId('run-saved').textContent().catch(() => '')), '채점하면 연습 기록과 녹음 저장');
     await page.screenshot({ path: 'scripts/shot-score.png', fullPage: true });
+    const tags = await page.getByTestId('dev-tag').allTextContents();
+    ok(tags.some((t) => /^▲1[0-4]$/.test(t)), `음표 옆 ▲ 높게 표시 (${tags.join(' ')})`);
+    ok(/±10센트 안/.test(await page.getByTestId('dev-legend').textContent()), '결과 범례 (보통 ±10)');
+    await page.getByTestId('tol-relaxed').click();
+    await page.waitForTimeout(500);
+    ok(/±15센트 안/.test(await page.getByTestId('dev-legend').textContent()) && !(await page.getByTestId('dev-tag').allTextContents()).some((t) => /^▲1[0-4]$/.test(t)), '관대로 바꾸면 ±15 안의 음은 ▲ 표시 없음');
+    await page.getByTestId('tol-normal').click();
+    // 채점할 때 박자 (깜빡임)
+    await page.getByTestId('score-metro-visual').click();
+    await page.getByTestId('score-start').click();
+    ok(await seen(page.getByTestId('beat-dot'), 3000), '채점 중 박자 깜빡임 점');
+    await page.waitForTimeout(800);
+    await page.getByTestId('score-stop').click();
+    await page.getByTestId('score-metro-off').click();
+    await page.waitForTimeout(800);
+    // 두 번째 채점 → 지난 기록 다시 보기·발전 그래프
+    await page.getByTestId('score-start').click();
+    await page.waitForTimeout(5200);
+    await page.getByTestId('score-stop').click();
+    await page.waitForTimeout(1500);
+    ok(await seen(page.getByTestId('progress-card')), '발전 그래프 (기록 2번)');
+    ok(await seen(page.getByTestId('run-chart')), `발전 그래프 선 (${(await page.getByTestId('progress-card').textContent().catch(() => '')).slice(0, 40)})`);
+    await page.getByTestId('run-history').locator('.rec-title').nth(1).click();
+    ok(await seen(page.getByTestId('run-history').getByTestId('run-insight')), `지난 기록 요약 (${(await page.getByTestId('run-history').getByTestId('run-insight').textContent().catch(() => '')).slice(0, 50)})`);
+    await page.getByTestId('run-show').first().click();
+    await page.waitForTimeout(1200);
+    ok(await seen(page.getByTestId('past-run')), '지난 기록을 악보에 다시 보기');
+    ok((await page.getByTestId('dev-tag').allTextContents()).some((t) => /^▲1[0-4]$/.test(t)), '지난 기록도 ▲ 높게 표시');
+    // 레슨 노트: 마디 붙이면 악보에 📝
+    await page.getByTestId('lesson-text').fill('B4 낮추기: 입술 덜 조이기');
+    await page.getByTestId('lesson-measure').fill('1');
+    await page.getByTestId('lesson-add').click();
+    ok(await seen(page.getByTestId('lesson-card').getByTestId('lesson-note')), '레슨 노트 추가');
+    ok(await seen(page.getByTestId('lesson-top')), '악보 위 레슨 체크리스트');
+    ok(await seen(page.getByTestId('lesson-pin'), 3000), '악보에 레슨 노트 📝');
+    // 음 고치기 → 원래대로
+    await page.getByTestId('edit-toggle').click();
+    await page.locator('[data-testid=osmd] .vf-notehead').nth(0).scrollIntoViewIfNeeded();
+    const h0 = await page.locator('[data-testid=osmd] .vf-notehead').nth(0).boundingBox();
+    if (h0) await page.mouse.click(h0.x + h0.width / 2, h0.y + h0.height / 2);
+    ok(await seen(page.getByTestId('edit-sheet'), 2000), '음 고치기 창');
+    const before0 = await page.getByTestId('edit-note').textContent();
+    await page.getByTestId('edit-up').click();
+    await page.waitForTimeout(1200);
+    const after0 = await page.getByTestId('edit-note').textContent();
+    ok(before0 === 'A4' && after0 === 'B♭4', `반음 올리기 (${before0} → ${after0})`);
+    await page.getByTestId('edit-close').click();
+    page.once('dialog', (d) => d.accept());
+    await page.getByTestId('edit-revert-all').click();
+    await page.waitForTimeout(1500);
+    const h1 = await page.locator('[data-testid=osmd] .vf-notehead').nth(0).boundingBox();
+    if (h1) await page.mouse.click(h1.x + h1.width / 2, h1.y + h1.height / 2);
+    ok((await page.getByTestId('edit-note').textContent({ timeout: 2000 }).catch(() => '')) === 'A4', '원래 악보로 되돌리기');
+    await page.getByTestId('edit-close').click().catch(() => {});
+    await page.getByTestId('edit-toggle').click();
+    await page.screenshot({ path: 'scripts/shot-records.png', fullPage: true });
+    // 음표 눌러 그 마디부터
+    await page.locator('[data-testid=osmd] .vf-notehead').nth(4).scrollIntoViewIfNeeded();
+    const head = await page.locator('[data-testid=osmd] .vf-notehead').nth(4).boundingBox();
+    if (head) await page.mouse.click(head.x + head.width / 2, head.y + head.height / 2);
+    ok(await seen(page.getByTestId('here-bar'), 2000), `음표 누르면 "여기부터" (${(await page.getByTestId('here-bar').textContent().catch(() => '')).slice(0, 12)})`);
+    await page.getByTestId('here-play').click();
+    await page.waitForTimeout(600);
+    ok((await page.getByTestId('from').inputValue()) === '2' && /멈추기/.test(await page.getByTestId('play-toggle').textContent()), `그 마디부터 듣기 (${await page.getByTestId('from').inputValue()}마디)`);
+    await page.getByTestId('play-toggle').click();
+    await page.getByTestId('from').fill('1');
+    await page.getByTestId('to').fill('2');
+    await page.waitForTimeout(800);
     // 악보 듣기 (클라리넷 샘플)
     ok(await page.getByTestId('expressive').isChecked(), '셈여림·아티큘레이션 살리기 기본 켜짐');
     await page.getByTestId('play-bpm').fill('200');
@@ -231,6 +304,20 @@ try {
     const order = await page.evaluate(() => { const a = document.querySelector('[data-testid=play-card]'), b = document.querySelector('.score-sheet'); return !!(a && b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)); });
     ok(order, '메뉴가 악보 위에 있음');
     await page.screenshot({ path: 'scripts/shot-layout.png', fullPage: true });
+    // 셈여림 비교 (p < f 가 있는 악보)
+    await page.getByRole('button', { name: '◀ 목록' }).click();
+    await page.getByTestId('score-file').setInputFiles(path.resolve('scripts/test-dyn.musicxml'));
+    await page.waitForTimeout(1500);
+    await page.getByTestId('to').fill('2');
+    await page.waitForTimeout(600);
+    await page.getByTestId('score-start').click();
+    await page.waitForTimeout(5200);
+    await page.getByTestId('score-stop').click();
+    await page.waitForTimeout(1200);
+    ok(await seen(page.getByTestId('view-dyn')), '셈여림으로 보기 버튼');
+    await page.getByTestId('view-dyn').click();
+    ok(await seen(page.getByTestId('dyn-chart')), `셈여림 비교 (${(await page.getByTestId('dyn-chart').textContent().catch(() => '')).slice(0, 40)})`);
+    await page.screenshot({ path: 'scripts/shot-dyn.png', fullPage: true });
     // 연습 기록 탭: 오늘 악보 연습 + 녹음 연동
     await page.getByTestId('play-toggle').click().catch(() => {});
     await tab(page, 'log');
@@ -238,11 +325,18 @@ try {
     ok(await seen(page.getByTestId('day-runs')), '달력 오늘 칸에 악보 연습 기록');
     await page.getByTestId('day-runs').locator('.rec-title').first().click();
     ok(await seen(page.getByTestId('day-runs').locator('audio')), '연습 기록에서 녹음 재생');
+    ok(await seen(page.getByTestId('day-runs').getByTestId('run-insight')), '달력 기록에 분석 요약');
+    ok(await seen(page.getByTestId('lesson-log')), '기록에 레슨 노트');
     await page.screenshot({ path: 'scripts/shot-runs.png', fullPage: true });
     await page.locator('.log .segmented').first().getByRole('button', { name: '녹음' }).click();
     await page.getByTestId('rec-filter').getByRole('button', { name: '악보 연습' }).click();
     await page.locator('.rec-list .rec-title').first().click();
     ok(/악보 채점: 1~2마디/.test(await page.getByTestId('rec-run').textContent().catch(() => '')), '녹음 목록에 악보 채점 결과 연동');
+    // 달력 기록 → 악보에서 분석 보기
+    await page.locator('.log .segmented').getByRole('button', { name: '달력' }).click();
+    await page.getByTestId('day-runs').locator('.rec-title').first().click();
+    await page.getByTestId('log-run-show').first().click();
+    ok(await seen(page.getByTestId('past-run'), 5000), '기록 화면에서 악보 분석 바로 열기');
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
     await browser.close();
   }
@@ -533,6 +627,42 @@ try {
     ok(clean >= 2 && clean < total, `깨끗하게 ${clean}/${total} (0.06초 끊김만 깨끗)`);
     ok(/끽 소리 \d+번/.test(r), '끽 소리 찾음');
     await page.screenshot({ path: 'scripts/shot-break-result.png', fullPage: true });
+    ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
+    await browser.close();
+  }
+
+  // ── 10. 못갖춘마디 0 · 악보에 적힌 템포 · 그리기 구간 ──
+  {
+    const { browser, page, errors } = await launch('bb466.wav');
+    await tab(page, 'score');
+    await page.getByTestId('score-file').setInputFiles(path.resolve('scripts/test-pickup.musicxml'));
+    await page.getByTestId('score-view').waitFor({ timeout: 5000 });
+    await page.waitForTimeout(1500);
+    ok((await page.getByTestId('from').inputValue()) === '0', `못갖춘마디 0 부터 시작 (${await page.getByTestId('from').inputValue()})`);
+    ok((await page.getByTestId('play-bpm').inputValue()) === '66', `악보에 적힌 템포로 (${await page.getByTestId('play-bpm').inputValue()})`);
+    const all = await page.locator('[data-testid=osmd] .vf-stavenote').count();
+    await page.getByTestId('to').fill('0');
+    await page.waitForTimeout(1500);
+    const one = await page.locator('[data-testid=osmd] .vf-stavenote').count();
+    ok(all >= 7 && one === 1, `0번 마디만 그리기 (전체 ${all}음 → ${one}음)`);
+    await page.getByTestId('from').fill('2');
+    await page.getByTestId('to').fill('3');
+    await page.waitForTimeout(1500);
+    ok((await page.locator('[data-testid=osmd] .vf-stavenote').count()) === 3, `2~3마디만 그리기 (${await page.locator('[data-testid=osmd] .vf-stavenote').count()}음)`);
+    await page.getByRole('button', { name: '◀ 목록' }).click();
+    ok(/스모크 못갖춘마디/.test(await page.locator('.page').textContent()), '목록에 새 악보 (XML 없이 목록)');
+    // 트릴·모르덴트·턴·꾸밈음 재생 (채점 음은 꾸밈음 빼고 5개)
+    await page.getByTestId('score-file').setInputFiles(path.resolve('scripts/test-orn.musicxml'));
+    await page.getByTestId('score-view').waitFor({ timeout: 5000 });
+    await page.waitForTimeout(1200);
+    await page.getByTestId('to').fill('2');
+    await page.waitForTimeout(600);
+    ok(/ 5음/.test(await page.locator('.range-row').textContent()), `꾸밈음은 채점 음에서 빼기 (${(await page.locator('.range-row').textContent()).trim()})`);
+    await page.getByTestId('play-bpm').fill('120');
+    await page.getByTestId('play-toggle').click();
+    await page.waitForTimeout(4500);
+    ok(!/불러오지 못해서/.test(await page.locator('.page').textContent()), '트릴·꾸밈음 재생');
+    await page.getByTestId('play-toggle').click().catch(() => {});
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
     await browser.close();
   }

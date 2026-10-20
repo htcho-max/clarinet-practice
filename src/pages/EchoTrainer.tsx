@@ -1,3 +1,4 @@
+import { useToday } from '../state/useToday';
 import { useEffect, useRef, useState } from 'react';
 import { pitchTracker } from '../audio/pitchTracker';
 import { NoteSegmenter, equalRef } from '../audio/segment';
@@ -41,7 +42,7 @@ export function EchoTrainer({ pitch }: { pitch: ReturnType<typeof usePitch> }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const endRef = useRef<(() => void) | null>(null);
   const runs = useToneRuns('echo');
-  const today = localDate();
+  const today = useToday();
   const todayRuns = runs.filter((r) => r.date === today);
   useEffect(() => () => { scorePlayer.stop(); if (timer.current) clearTimeout(timer.current); }, []);
 

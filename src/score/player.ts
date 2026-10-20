@@ -3,6 +3,8 @@ import { waveFor } from '../audio/timbre';
 import { midiToFreq, getTranspose } from '../audio/notes';
 import type { ParsedScore, ScoreNote } from './parse';
 import { loadSamples, scheduleSampleNote } from '../audio/sampler';
+import { noteClick, clearClicks } from '../audio/clicks';
+import { outputLatency } from '../audio/latency';
 
 export type Voice = 'sample' | 'synth';
 
@@ -163,9 +165,45 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
 }
 
 /** 악기 소리로 재생 (실음으로 옮겨서). stop() 을 돌려줌 */
+/** 이만큼(초) 앞까지만 조금씩 예약 (긴 곡도 휴대폰에서 가볍게) */
+const AHEAD = 2.5;
+
+/** 꾸밈음·트릴 등을 실제로 낼 짧은 음들로 (시각은 계획의 초). 꾸밈 없는 음은 그 음 하나 */
+export interface Piece { midi: number; time: number; len: number; legato: boolean; main: boolean }
+export const GRACE = 0.07;
+export function expandOrnaments(e: PlayEvent, len: number): Piece[] {
+  const a = e.note.art ?? {};
+  const out: Piece[] = [];
+  const g = a.grace ?? [];
+  g.forEach((m, k) => out.push({ midi: m, time: Math.max(0, e.time - (g.length - k) * GRACE), len: GRACE * 0.95, legato: k > 0, main: false }));
+  const o = a.orn;
+  if (!o) { out.push({ midi: e.note.midi, time: e.time, len, legato: g.length > 0, main: true }); return out; }
+  const step = Math.min(0.075, Math.max(0.04, e.dur / 4));
+  const M = e.note.midi;
+  let seq: number[];
+  if (o.kind === 'trill') {
+    const n = Math.max(2, Math.floor(len / step));
+    seq = Array.from({ length: n }, (_, k) => (k % 2 ? o.upper : M));
+    seq[seq.length - 1] = M; // 끝은 원래 음
+  } else if (o.kind === 'invmordent') seq = [M, o.upper];
+  else if (o.kind === 'mordent') seq = [M, o.lower];
+  else seq = [o.upper, M, o.lower];
+  seq.forEach((m, k) => out.push({ midi: m, time: e.time + k * step, len: step * 1.02, legato: k > 0 || g.length > 0, main: k === 0 }));
+  // 남은 길이는 원래 음으로 (트릴은 이미 끝까지 채움)
+  const used = seq.length * step;
+  if (o.kind !== 'trill' && len - used > 0.02) out.push({ midi: M, time: e.time + used, len: len - used, legato: true, main: false });
+  else if (o.kind === 'trill') out[out.length - 1].len = Math.max(step, len - (seq.length - 1) * step);
+  return out;
+}
+
 export class ScorePlayer {
-  private nodes: AudioScheduledSourceNode[] = [];
+  /** 아직 소리 나는(또는 예약된) 노드 — 끝나면 저절로 빠짐 */
+  private nodes = new Set<AudioScheduledSourceNode>();
+  private keep = (...ns: AudioScheduledSourceNode[]) => {
+    for (const n of ns) { this.nodes.add(n); n.addEventListener?.('ended', () => this.nodes.delete(n)); }
+  };
   private timers: ReturnType<typeof setTimeout>[] = [];
+  private pumpTimer: ReturnType<typeof setInterval> | null = null;
   private ctx: AudioContext | null = null;
   playing = false;
   usedSample = false;
@@ -176,7 +214,7 @@ export class ScorePlayer {
 
   async play(
     plan: Plan,
-    opts: { a4: number; click: boolean; volume?: number; voice?: Voice; onNote?: (e: PlayEvent | null, idx?: number) => void; onEnd?: () => void; mute?: boolean; accVolume?: number },
+    opts: { a4: number; /** true = 소리, 'visual' = 소리 없이 박 깜빡임만 (onBeat), false = 카운트인만 */ click: boolean | 'visual'; onBeat?: (k: number, accent: boolean) => void; volume?: number; voice?: Voice; onNote?: (e: PlayEvent | null, idx?: number) => void; onEnd?: () => void; mute?: boolean; accVolume?: number },
   ) {
     this.stop();
     const gen = this.gen;
@@ -197,36 +235,36 @@ export class ScorePlayer {
     lp.frequency.value = 3500;
     lp.connect(master).connect(ctx.destination);
     this.startedAt = t0;
-    // 반주
-    if (plan.acc.length) {
-      const accGain = ctx.createGain();
-      accGain.gain.value = opts.accVolume ?? 0.6;
-      accGain.connect(master);
-      for (const e of plan.acc) {
-        const a = t0 + e.time;
-        const m = e.note.midi + (e.shift ?? 0);
-        if (e.inst === 'piano') { this.nodes.push(...pianoNote(ctx, accGain, midiToFreq(m, opts.a4), a, e.dur)); continue; }
-        if (useSample) { const n = scheduleSampleNote(ctx, accGain, m, a, e.dur * 0.98, opts.a4, 0.8); if (n) { this.nodes.push(n); continue; } }
-        this.nodes.push(...pianoNote(ctx, accGain, midiToFreq(m, opts.a4), a, e.dur));
+    const accGain = ctx.createGain();
+    accGain.gain.value = opts.accVolume ?? 0.6;
+    accGain.connect(master);
+    // 화면 표시(지금 음·박 깜빡임)는 기기 출력 지연 + 이어폰 지연 보정만큼 늦춤
+    const lat = ((ctx as AudioContext & { outputLatency?: number }).outputLatency ?? ctx.baseLatency ?? 0) + outputLatency();
+    const visual = (abs: number, fn: () => void) => this.timers.push(setTimeout(fn, Math.max(0, (abs - ctx.currentTime + lat) * 1000)));
+
+    /** 내 파트 한 음 (샘플 → 합성음). 표현(셈여림·스타카토·이음줄·강세)을 살림 */
+    const mainNote = (e: PlayEvent) => {
+      const a = e.note.art;
+      if (!a?.grace?.length && !a?.orn) return toneNote(e);
+      // 꾸밈음·트릴: 짧은 음 여러 개로 (꾸밈 음들은 혀 없이 이어서)
+      for (const pc of expandOrnaments(e, e.len ?? e.dur * 0.98)) {
+        toneNote({ ...e, note: { ...e.note, midi: pc.midi }, time: pc.time, len: pc.len, legatoIn: pc.main ? (e.legatoIn || pc.legato) : pc.legato, accent: pc.main ? e.accent : false });
       }
-    }
-    const lat = (ctx as AudioContext & { outputLatency?: number }).outputLatency ?? ctx.baseLatency ?? 0;
-    for (const [idx, e] of plan.events.entries()) {
+    };
+    const toneNote = (e: PlayEvent) => {
       const a0 = t0 + e.time;
-      this.timers.push(setTimeout(() => opts.onNote?.(e, idx), Math.max(0, (a0 - ctx.currentTime + lat) * 1000)));
-      if (opts.mute) continue;
       const m = e.note.midi + (e.shift ?? 0);
       const level = e.gain === undefined ? 1 : e.gain / 0.75; // 표현 없음 = 예전 크기
       if (useSample) {
         // 다음 음과 살짝 겹치게 (레가토). 이음줄로 이어지는 음은 샘플의 어택을 건너뛰고 부드럽게
         const n = scheduleSampleNote(ctx, master, m, a0, e.len ?? e.dur * 0.98, opts.a4, 0.9 * level, { legatoIn: e.legatoIn, accent: e.accent });
-        if (n) { this.nodes.push(n); continue; }
+        if (n) { this.keep(n); return; }
       }
       const osc = ctx.createOscillator();
       osc.setPeriodicWave(wave);
       osc.frequency.value = midiToFreq(m, opts.a4);
       const g = ctx.createGain();
-      const a = t0 + e.time, len = Math.max(0.05, e.len ?? e.dur * 0.92);
+      const a = a0, len = Math.max(0.05, e.len ?? e.dur * 0.92);
       const peak = Math.min(1.4, level * (e.accent ? 1.35 : 1));
       const att = e.legatoIn ? 0.04 : e.accent ? 0.008 : Math.min(0.02, len / 3);
       g.gain.setValueAtTime(e.legatoIn ? level * 0.6 : 0, a);
@@ -237,32 +275,68 @@ export class ScorePlayer {
       osc.connect(g).connect(lp);
       osc.start(a);
       osc.stop(a + len + 0.02);
-      this.nodes.push(osc);
+      this.keep(osc);
+    };
+
+    // 예약할 일: 시각(계획의 초)과 실제로 예약하는 함수
+    type Job = { at: number; run: () => void };
+    const jobs: Job[] = [];
+    for (const e of plan.acc) {
+      jobs.push({ at: e.time, run: () => {
+        const a = t0 + e.time;
+        const m = e.note.midi + (e.shift ?? 0);
+        if (e.inst !== 'piano' && useSample) { const n = scheduleSampleNote(ctx, accGain, m, a, e.dur * 0.98, opts.a4, 0.8); if (n) { this.keep(n); return; } }
+        this.keep(...pianoNote(ctx, accGain, midiToFreq(m, opts.a4), a, e.dur));
+      } });
+    }
+    for (const [idx, e] of plan.events.entries()) {
+      jobs.push({ at: Math.max(0, e.time - GRACE * (e.note.art?.grace?.length ?? 0)), run: () => {
+        visual(t0 + e.time, () => opts.onNote?.(e, idx));
+        if (!opts.mute) mainNote(e);
+      } });
     }
     const firstNote = plan.events.length ? plan.events[0].time : Infinity;
-    for (const c of plan.clicks) {
-      if (!opts.click && c.time >= firstNote - 1e-6) continue; // 카운트인만
-      const osc = ctx.createOscillator();
-      osc.frequency.value = c.accent ? 1760 : 1320;
-      const g = ctx.createGain();
-      const a = t0 + c.time;
-      g.gain.setValueAtTime(c.accent ? 0.35 : 0.22, a);
-      g.gain.exponentialRampToValueAtTime(0.001, a + 0.05);
-      osc.connect(g).connect(ctx.destination);
-      osc.start(a);
-      osc.stop(a + 0.06);
-      this.nodes.push(osc);
+    for (const [k, c] of plan.clicks.entries()) {
+      jobs.push({ at: c.time, run: () => {
+        // 눈으로 보는 박자 (깜빡임)
+        if (opts.onBeat) visual(t0 + c.time, () => opts.onBeat?.(k, c.accent));
+        const countIn = c.time < firstNote - 1e-6;
+        if (!countIn && opts.click !== true) return; // 카운트인 뒤는 소리 메트로놈일 때만
+        const a = t0 + c.time;
+        noteClick(a); // 음높이 분석에서 클릭 소리는 빼도록 (실제 소리 나는 시각)
+        const osc = ctx.createOscillator();
+        osc.frequency.value = c.accent ? 1760 : 1320;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(c.accent ? 0.35 : 0.22, a);
+        g.gain.exponentialRampToValueAtTime(0.001, a + 0.05);
+        osc.connect(g).connect(ctx.destination);
+        osc.start(a);
+        osc.stop(a + 0.06);
+        this.keep(osc);
+      } });
     }
-    this.timers.push(setTimeout(() => { this.playing = false; opts.onNote?.(null); opts.onEnd?.(); }, (t0 - ctx.currentTime + plan.total) * 1000 + 100));
+    jobs.sort((a, b) => a.at - b.at);
+    let ptr = 0;
+    const pump = () => {
+      if (gen !== this.gen) return;
+      const horizon = ctx.currentTime + AHEAD - t0;
+      while (ptr < jobs.length && jobs[ptr].at <= horizon) jobs[ptr++].run();
+      if (ptr >= jobs.length && this.pumpTimer) { clearInterval(this.pumpTimer); this.pumpTimer = null; }
+    };
+    pump();
+    if (ptr < jobs.length) this.pumpTimer = setInterval(pump, 250);
+    this.timers.push(setTimeout(() => { this.playing = false; opts.onNote?.(null); opts.onEnd?.(); }, (t0 - ctx.currentTime + plan.total + lat) * 1000 + 100));
   }
 
   stop() {
     this.gen++;
+    if (this.pumpTimer) { clearInterval(this.pumpTimer); this.pumpTimer = null; }
+    clearClicks();
     this.timers.forEach(clearTimeout);
     this.timers = [];
     const now = this.ctx?.currentTime ?? 0;
     for (const n of this.nodes) { try { n.stop(now); } catch { /* 이미 끝남 */ } }
-    this.nodes = [];
+    this.nodes.clear();
     this.playing = false;
   }
 }

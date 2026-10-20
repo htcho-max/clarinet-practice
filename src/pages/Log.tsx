@@ -1,3 +1,4 @@
+import { useToday } from '../state/useToday';
 import { useMemo, useState } from 'react';
 import { useSessions } from '../state/useSessions';
 import { usePieces } from '../state/usePieces';
@@ -9,6 +10,10 @@ import { useBackLayer } from '../state/back';
 import { useScoreRuns, runText } from '../state/useScoreRuns';
 import { clock } from '../data/dates';
 import { Insights } from './Insights';
+import { LessonNotesLog } from '../components/LessonNotes';
+import { RunInsightView } from '../components/RunInsight';
+import { requestScore } from '../state/openRequest';
+import type { TabId } from '../components/TabBar';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -22,7 +27,7 @@ function level(sec: number): number {
 
 type View = 'calendar' | 'insights' | 'pieces' | 'recordings';
 
-export function Log() {
+export function Log({ goTab }: { goTab?: (t: TabId) => void } = {}) {
   const [view, setView] = useState<View>(() => { try { return (localStorage.getItem('clarinet-log-view') as View) || 'calendar'; } catch { return 'calendar'; } });
   const go = (v: View) => { setView(v); try { localStorage.setItem('clarinet-log-view', v); } catch { /* 무시 */ } };
   useBackLayer(view !== 'calendar', () => go('calendar'));
@@ -34,7 +39,7 @@ export function Log() {
         <button className={view === 'pieces' ? 'on' : ''} onClick={() => go('pieces')}>곡</button>
         <button className={view === 'recordings' ? 'on' : ''} onClick={() => go('recordings')}>녹음</button>
       </div>
-      {view === 'calendar' && <Calendar />}
+      {view === 'calendar' && <><Calendar goTab={goTab} /><LessonNotesLog /></>}
       {view === 'insights' && <Insights />}
       {view === 'pieces' && <Pieces />}
       {view === 'recordings' && <Recordings />}
@@ -42,13 +47,13 @@ export function Log() {
   );
 }
 
-function Calendar() {
+function Calendar({ goTab }: { goTab?: (t: TabId) => void }) {
   const sessions = useSessions();
   const runs = useScoreRuns();
   const [openRun, setOpenRun] = useState<number | null>(null);
   const pieces = usePieces();
   const pieceName = (id: string) => pieces.find((p) => p.id === id)?.title;
-  const today = localDate();
+  const today = useToday();
   const [month, setMonth] = useState(() => today.slice(0, 7)); // YYYY-MM
   const [selected, setSelected] = useState(today);
 
@@ -137,7 +142,8 @@ function Calendar() {
                   </div>
                   {openRun === r.id && (
                     <div className="rec-body">
-                      {r.weakMeasures?.length ? <p className="small">가장 벗어난 마디: {r.weakMeasures.join(', ')}</p> : null}
+                      <RunInsightView run={r} />
+                      {r.notes?.length && goTab ? <button className="secondary wide" onClick={() => { requestScore({ scoreId: r.scoreId, runId: r.id }); goTab('score'); }} data-testid="log-run-show">악보에서 분석 보기</button> : null}
                       {r.recordingId ? <RecPlayerById id={r.recordingId} /> : <p className="muted small">녹음 없이 채점만 했어요.</p>}
                     </div>
                   )}

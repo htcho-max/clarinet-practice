@@ -40,6 +40,12 @@ describe('복습함', () => {
     expect(g.graduated).toEqual([2]);
     expect(g.del).toEqual(['7:2']);
   });
+  it('판정 기준을 따름 (관대면 ±30까지 괜찮음, 엄격이면 ±10 넘으면 틀림)', () => {
+    const st = measureStats([ok(1, 25), ok(1, 25)]);
+    expect(reviewChanges(new Map(), st, 1, 't', '2026-10-19').added).toEqual([1]);
+    expect(reviewChanges(new Map(), st, 1, 't', '2026-10-19', { good: 15, warn: 30 }).added).toEqual([]);
+    expect(reviewChanges(new Map(), measureStats([ok(1, 12)]), 1, 't', '2026-10-19', { good: 5, warn: 10 }).added).toEqual([1]);
+  });
   it('오늘 복습 묶음과 이어진 마디', () => {
     const it = (m: number, due: string, sid = 1): ReviewItem => ({ id: `${sid}:${m}`, scoreId: sid, measure: m, title: 't', box: 0, due, added: due });
     const g = dueGroups([it(5, '2026-10-19'), it(3, '2026-10-18'), it(9, '2026-10-25'), it(1, '2026-10-19', 2)], '2026-10-19');
@@ -59,6 +65,11 @@ describe('템포 사다리', () => {
     expect(ladderVerdict({ pct: 95, target: 80, bpm: 70, rhythmMeanAbs: 0.05 })).toMatchObject({ pass: false, next: 80 });
     expect(ladderVerdict({ pct: 60, target: 80, bpm: 80, rhythmMeanAbs: 0.05 })).toMatchObject({ pass: false, next: 76 });
     expect(ladderVerdict({ pct: 92, target: 80, bpm: null, rhythmMeanAbs: 0.2 }).pass).toBe(false);
+  });
+  it('음정 평균이 판정 기준의 노랑 한계 밖이면 통과 못 함', () => {
+    expect(ladderVerdict({ pct: 95, target: 60, bpm: 60, rhythmMeanAbs: 0.05, meanAbs: 25 }).pass).toBe(false);
+    expect(ladderVerdict({ pct: 95, target: 60, bpm: 60, rhythmMeanAbs: 0.05, meanAbs: 25, tol: { good: 15, warn: 30 } }).pass).toBe(true);
+    expect(ladderVerdict({ pct: 95, target: 60, bpm: 60, rhythmMeanAbs: 0.05, meanAbs: 12, tol: { good: 5, warn: 10 } }).msg).toMatch(/±10 안이면/);
   });
 });
 

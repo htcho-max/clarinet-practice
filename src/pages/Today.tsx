@@ -1,3 +1,4 @@
+import { useToday } from '../state/useToday';
 import { P } from '../instruments/profiles';
 import { useEffect, useState } from 'react';
 import { useSession, itemMs, totalMs } from '../state/session';
@@ -18,7 +19,7 @@ import { db } from '../data/db';
 /** 채점에서 틀린 마디를 간격을 늘려 가며 다시 (오늘 복습할 것) */
 function ReviewCard({ go }: { go: (t: TabId) => void }) {
   const items = useReviews();
-  const today = localDate();
+  const today = useToday();
   if (!items.length) return null;
   const groups = dueGroups(items, today);
   const dueN = groups.reduce((a, g) => a + g.measures.length, 0);
@@ -85,7 +86,7 @@ export function Today({ go, openSettings }: { go: (t: TabId) => void; openSettin
   const [confirmEnd, setConfirmEnd] = useState(false);
   useEffect(() => { if (!session) { setMemo(''); setConfirmEnd(false); } }, [session]);
 
-  const today = localDate();
+  const today = useToday();
   const runs = useScoreRuns();
   const todaySec = sessions.filter((s) => s.date === today).reduce((a, s) => a + s.totalSec, 0)
     + runs.filter((r) => r.date === today && !r.inSession).reduce((a, r) => a + r.durationSec, 0);

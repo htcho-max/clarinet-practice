@@ -1,3 +1,4 @@
+import { useToday } from '../state/useToday';
 import { useMemo, useState } from 'react';
 import { useSessions } from '../state/useSessions';
 import { useScoreRuns } from '../state/useScoreRuns';
@@ -15,7 +16,7 @@ export function Insights() {
   const sessions = useSessions();
   const scoreRuns = useScoreRuns();
   const toneRuns = useToneRuns();
-  const today = localDate();
+  const today = useToday();
   const [days, setDays] = useState(30);
   const weeks = useMemo(() => weeklyTrends(sessions, scoreRuns, toneRuns, today, 8), [sessions, scoreRuns, toneRuns, today]);
   const habits = useMemo(() => habitMap(scoreRuns, toneRuns, addDays(today, -days)), [scoreRuns, toneRuns, today, days]);

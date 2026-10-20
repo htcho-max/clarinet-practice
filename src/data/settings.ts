@@ -1,6 +1,7 @@
 import type { ClickSound } from '../audio/metronome';
 import type { Instrument } from '../audio/notes';
 import { P } from '../instruments/profiles';
+import type { ToleranceId } from '../score/tolerance';
 
 export interface RoutineItem { key: string; label: string; minutes: number }
 
@@ -18,6 +19,12 @@ export interface Settings {
   accent: boolean;
   droneVolume: number;
   routine: RoutineItem[];
+  /** 연습 항목 시간이 끝나면 알림 (소리·진동·안내) */
+  itemAlert: boolean;
+  /** 이어폰 지연 보정 (ms) */
+  latencyMs: number;
+  /** 음정 판정 기준 (악보 채점 색·지금 내는 음·복습함·템포 사다리) */
+  pitchTolerance: ToleranceId;
 }
 
 export const DEFAULT_ROUTINE: RoutineItem[] = [
@@ -42,6 +49,9 @@ export const DEFAULT_SETTINGS: Settings = {
   accent: true,
   droneVolume: 0.3,
   routine: DEFAULT_ROUTINE,
+  itemAlert: true,
+  latencyMs: 0,
+  pitchTolerance: 'normal',
 };
 
 export function mergeSettings(stored: Partial<Settings> | undefined): Settings {
