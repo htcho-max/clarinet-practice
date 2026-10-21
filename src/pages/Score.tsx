@@ -1,3 +1,4 @@
+import { withSolfa, type SolfaMode } from '../score/solfa';
 import { LITE } from '../state/lite';
 import { useToday } from '../state/useToday';
 import { P } from '../instruments/profiles';
@@ -355,6 +356,12 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
   const expected = useMemo(() => notesInRange(parsed, from, to), [parsed, from, to]);
   // 조표·임시표로 바뀐 음(♯·♭) 형광펜 표시. 익숙한 음은 칩을 눌러 빼기 (악기마다 따로 기억)
   const accKey = `clarinet-acc-hl-${P.id}`, skipKey = `clarinet-acc-skip-${P.id}`;
+  // 계이름: 음표 아래 줄마다 한 줄로 (고정 도 / 이동 도 / C D E). 악보음 기준
+  const [solfaOn, setSolfaOn] = useState(() => { try { return localStorage.getItem('clarinet-solfa') === '1'; } catch { return false; } });
+  const [solfaMode, setSolfaMode] = useState<SolfaMode>(() => { try { const v = localStorage.getItem('clarinet-solfa-mode'); return v === 'movable' || v === 'letter' ? v : 'fixed'; } catch { return 'fixed'; } });
+  useEffect(() => { try { localStorage.setItem('clarinet-solfa', solfaOn ? '1' : '0'); localStorage.setItem('clarinet-solfa-mode', solfaMode); } catch { /* 무시 */ } }, [solfaOn, solfaMode]);
+  /** 그리기용 악보: 계이름을 켜면 가사로 붙임 (듣기·채점은 viewXml 그대로) */
+  const drawXml = useMemo(() => (solfaOn ? withSolfa(viewXml, solfaMode) : viewXml), [viewXml, solfaOn, solfaMode]);
   const [hlOn, setHlOn] = useState(() => { try { return localStorage.getItem(accKey) === '1'; } catch { return false; } });
   useEffect(() => { try { localStorage.setItem(accKey, hlOn ? '1' : '0'); } catch { /* 무시 */ } }, [hlOn]); // eslint-disable-line react-hooks/exhaustive-deps
   const [accSkip, setAccSkip] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(skipKey) || '[]'); } catch { return []; } });
@@ -402,12 +409,12 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
       try {
         if (!osmdInit.current && holder.current) {
           const el = holder.current;
-          osmdInit.current = (async () => { const o = await createOSMD(el); await o.load(viewXml); loadedXml.current = viewXml; osmd.current = o; })();
+          osmdInit.current = (async () => { const o = await createOSMD(el); await o.load(drawXml); loadedXml.current = drawXml; osmd.current = o; })();
         }
         await osmdInit.current;
         if (!alive || !osmd.current) return;
         // 앱에서 음을 고쳤으면 새 악보로 다시 읽기
-        if (loadedXml.current !== viewXml) { const x = viewXml; await osmd.current.load(x); loadedXml.current = x; if (!alive) return; }
+        if (loadedXml.current !== drawXml) { const x = drawXml; await osmd.current.load(x); loadedXml.current = x; if (!alive) return; }
         setRendering(true);
         setDrawRange(osmd.current, from, to); // 못갖춘마디·중간 마디부터 시작하는 악보도 번호대로
         osmd.current.zoom = zoomView;
@@ -428,7 +435,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
       }
     })();
     return () => { alive = false; };
-  }, [viewXml, from, to, myPart, score.showOthers, zoomView, focus, sizeTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [drawXml, from, to, myPart, score.showOthers, zoomView, focus, sizeTick]); // eslint-disable-line react-hooks/exhaustive-deps
   // 음표 색: 다시 그린 뒤나 채점 결과·보기·판정 기준이 바뀔 때 칠하기만
   useEffect(() => { paintNotes(els.current, noteColors, holder.current ?? document); }, [noteColors, renderTick]);
 
@@ -1094,6 +1101,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
         <span className="muted small">{from}~{to}마디{nowMeasure !== null ? ` · 지금 ${nowMeasure}마디` : ''}</span>
         <span className="zoom">
           <button className={`mini ${tool === 'edit' ? 'on' : ''}`} onClick={() => { setTool(tool === 'edit' ? 'none' : 'edit'); setEditKey(null); setHereKey(null); }} disabled={listening || keyShift !== 0} data-testid="edit-toggle" title="틀린 음을 눌러 높이·길이 고치기">♪ 음 고치기</button>
+          <button className={`mini ${solfaOn ? 'on' : ''}`} onClick={() => setSolfaOn(!solfaOn)} data-testid="solfa-toggle" title="음표 아래에 계이름">계이름</button>
           <button className={`mini ${hlOn ? 'on' : ''}`} onClick={() => setHlOn(!hlOn)} data-testid="acc-toggle" title="조표·임시표로 바뀐 음(♯·♭)에 형광펜">♯♭ 표시</button>
           <button className={`mini ${focus ? 'on' : ''}`} onClick={() => setFocus(!focus)} data-testid="focus-toggle">{focus ? '메뉴 보기' : '악보만'}</button>
           <button className="mini" onClick={() => setZoom((z) => Math.max(0.5, Math.round((z - 0.1) * 10) / 10))} aria-label="악보 작게">가−</button>
@@ -1101,6 +1109,14 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
           <button className="mini" onClick={() => setZoom((z) => Math.min(2, Math.round((z + 0.1) * 10) / 10))} aria-label="악보 크게">가+</button>
         </span>
       </div>
+      {solfaOn && (
+        <div className="acc-bar" data-testid="solfa-bar">
+          <span className="muted small">계이름{P.id === 'clarinet' ? ' (악보음)' : ''}</span>
+          {([['fixed', '고정 도 (C=도)'], ['movable', '이동 도 (으뜸음=도)'], ['letter', 'C D E']] as const).map(([v, l]) => (
+            <button key={v} className={`chip acc-chip ${solfaMode === v ? 'on' : ''}`} onClick={() => setSolfaMode(v)} data-testid={`solfa-${v}`}>{l}</button>
+          ))}
+        </div>
+      )}
       {hlOn && (
         <div className="acc-bar" data-testid="acc-bar">
           {accNames.length === 0 ? <span className="muted small">이 구간에는 ♯·♭이 붙는 음이 없어요.</span> : (

@@ -3,7 +3,7 @@ import type { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 /** 라이브러리는 악보 화면을 열 때만 불러옴 */
 export async function createOSMD(el: HTMLElement): Promise<OpenSheetMusicDisplay> {
   const { OpenSheetMusicDisplay } = await import('opensheetmusicdisplay');
-  return new OpenSheetMusicDisplay(el, {
+  const o = new OpenSheetMusicDisplay(el, {
     autoResize: false, // 크기 변화는 화면에서 직접 (재생 중 강조가 끊기지 않게)
     backend: 'svg',
     drawTitle: false,
@@ -14,6 +14,13 @@ export async function createOSMD(el: HTMLElement): Promise<OpenSheetMusicDisplay
     drawingParameters: 'compacttight',
     followCursor: false,
   });
+  // 계이름(가사 줄)은 작게, 마디가 너무 넓어지지 않게
+  const r = o.EngravingRules;
+  r.LyricsHeight = 1.5;
+  r.HorizontalBetweenLyricsDistance = 0.1;
+  r.MaximumLyricsElongationFactor = 1.4;
+  r.LyricsYMarginToBottomLine = 0.2;
+  return o;
 }
 
 type AnyNote = { NoteTie?: { StartNote?: unknown }; isRest: () => boolean };

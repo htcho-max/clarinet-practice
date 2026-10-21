@@ -684,6 +684,20 @@ try {
     await page.waitForTimeout(1500);
     await page.getByTestId('to').fill('2');
     await page.waitForTimeout(1200);
+    // 계이름: 시험 악보(D장조) → 가사 줄로 (고정 도 '라'·이동 도 '솔'·C D E 'A' 로 시작)
+    const lyr = async () => (await page.locator('[data-testid=osmd] svg text').allTextContents()).map((t) => t.trim()).filter((t) => /^([도레미파솔라시]|[A-G])[♯♭𝄪𝄫]?$/.test(t));
+    await page.getByTestId('solfa-toggle').click();
+    await page.waitForTimeout(1500);
+    const sf = await lyr();
+    await page.getByTestId('solfa-movable').click(); await page.waitForTimeout(1500);
+    const sm = await lyr();
+    await page.getByTestId('solfa-letter').click(); await page.waitForTimeout(1500);
+    const sl = await lyr();
+    ok(sf[0] === '라' && sm[0] === '솔' && sl[0] === 'A' && sf.length === 6, `계이름 (고정 ${sf.join(' ')} / 이동 ${sm.join(' ')} / ${sl.join(' ')})`);
+    await page.screenshot({ path: 'scripts/shot-solfa.png', fullPage: true });
+    await page.getByTestId('solfa-fixed').click();
+    await page.getByTestId('solfa-toggle').click();
+    await page.waitForTimeout(1200);
     await page.getByTestId('acc-toggle').click();
     await page.waitForTimeout(500);
     ok((await page.getByTestId('acc-hl').count()) === 1, `C♯5 에 형광펜 (${await page.getByTestId('acc-hl').count()})`);
