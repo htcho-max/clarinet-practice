@@ -666,6 +666,31 @@ try {
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
     await browser.close();
   }
+
+  // ── 11. ♯·♭ 형광펜 (D장조 악보: C♯5 하나) ──
+  {
+    const { browser, page, errors } = await launch('bb466.wav');
+    await tab(page, 'score');
+    await page.getByTestId('score-file').setInputFiles(path.resolve('scripts/test-score.musicxml'));
+    await page.waitForTimeout(1500);
+    await page.getByTestId('to').fill('2');
+    await page.waitForTimeout(1200);
+    await page.getByTestId('acc-toggle').click();
+    await page.waitForTimeout(500);
+    ok((await page.getByTestId('acc-hl').count()) === 1, `C♯5 에 형광펜 (${await page.getByTestId('acc-hl').count()})`);
+    ok((await page.getByTestId('acc-chip').allTextContents()).join() === 'C♯', '형광펜 칩 C♯');
+    await page.getByTestId('osmd').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: 'scripts/shot-acc.png', fullPage: true });
+    await page.getByTestId('acc-chip').click();
+    await page.waitForTimeout(300);
+    ok((await page.getByTestId('acc-hl').count()) === 0, '칩을 누르면 그 음은 빼기');
+    await page.getByTestId('acc-chip').click();
+    await page.getByTestId('zoom-in').click().catch(() => page.getByRole('button', { name: '악보 크게' }).click());
+    await page.waitForTimeout(1500);
+    ok((await page.getByTestId('acc-hl').count()) === 1, '확대해도 형광펜 따라감');
+    ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
+    await browser.close();
+  }
 } catch (e) {
   console.log('FAIL 예외', e.message.split('\n')[0]);
   process.exitCode = 1;

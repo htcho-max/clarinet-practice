@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { liveQuery } from 'dexie';
 import type { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { db, loadScoreList, type ScoreFile, type ScoreMeta } from '../data/db';
+import { sortAcc } from '../score/accidentals';
 import { parseMusicXML, notesInRange, playOrder, hasRepeats, type ParsedScore } from '../score/parse';
 import { measureStats, reviewChanges, reviewMessage, noteCentsOf, ladderVerdict, LADDER_STEP } from '../data/review';
 import { currentGearId, useReviews } from '../state/useGear';
@@ -339,6 +340,13 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
   useEffect(() => () => scorePlayer.stop(), []);
 
   const expected = useMemo(() => notesInRange(parsed, from, to), [parsed, from, to]);
+  // 조표·임시표로 바뀐 음(♯·♭) 형광펜 표시. 익숙한 음은 칩을 눌러 빼기 (악기마다 따로 기억)
+  const accKey = `clarinet-acc-hl-${P.id}`, skipKey = `clarinet-acc-skip-${P.id}`;
+  const [hlOn, setHlOn] = useState(() => { try { return localStorage.getItem(accKey) === '1'; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem(accKey, hlOn ? '1' : '0'); } catch { /* 무시 */ } }, [hlOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [accSkip, setAccSkip] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(skipKey) || '[]'); } catch { return []; } });
+  useEffect(() => { try { localStorage.setItem(skipKey, JSON.stringify(accSkip)); } catch { /* 무시 */ } }, [accSkip]); // eslint-disable-line react-hooks/exhaustive-deps
+  const accNames = useMemo(() => sortAcc([...new Set(expected.map((n) => n.acc).filter((x): x is string => !!x))]), [expected]);
 
   const rhythm = useMemo(() => (result ? analyzeRhythm(parsed, result) : null), [result, parsed]);
   const noteColors = useMemo(() => {
@@ -443,6 +451,27 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
     }
     setDevPos(out);
   }, [result, view, renderTick, tol.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ♯·♭ 형광펜: 음표 묶음(머리·기둥·임시표) 뒤에 노란 띠
+  const [accPos, setAccPos] = useState<{ key: string; x: number; y: number; w: number; h: number }[]>([]);
+  useEffect(() => {
+    const wrap = sheetWrap.current;
+    if (!wrap || !hlOn) { setAccPos([]); return; }
+    const base = wrap.getBoundingClientRect();
+    const skip = new Set(accSkip);
+    const out: typeof accPos = [];
+    for (const n of expected) {
+      if (!n.acc || skip.has(n.acc)) continue;
+      const key = `${n.measure}:${n.index}`;
+      const head = noteRect(key);
+      if (!head) continue;
+      const id = (els.current.get(key) ?? [])[0];
+      const g = id ? (document.getElementById(id) ?? document.getElementById(`vf-${id}`))?.getBoundingClientRect() : undefined;
+      const top = Math.min(head.top, g?.top ?? head.top), bottom = Math.max(head.bottom, g?.bottom ?? head.bottom);
+      const w = Math.max(10, head.right - head.left + 6);
+      out.push({ key, x: head.left - base.left - 3, y: top - base.top - 3, w, h: bottom - top + 6 });
+    }
+    setAccPos(out);
+  }, [hlOn, accSkip, expected, renderTick]); // eslint-disable-line react-hooks/exhaustive-deps
   // 레슨 노트가 붙은 마디: 첫 음 왼쪽 위에 📝
   const [lessonPos, setLessonPos] = useState<{ m: number; x: number; top: number; n: number }[]>([]);
   useEffect(() => {
@@ -928,12 +957,27 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
         <span className="muted small">{from}~{to}마디{nowMeasure !== null ? ` · 지금 ${nowMeasure}마디` : ''}</span>
         <span className="zoom">
           <button className={`mini ${tool === 'edit' ? 'on' : ''}`} onClick={() => { setTool(tool === 'edit' ? 'none' : 'edit'); setEditKey(null); setHereKey(null); }} disabled={listening} data-testid="edit-toggle" title="틀린 음을 눌러 높이·길이 고치기">♪ 음 고치기</button>
+          <button className={`mini ${hlOn ? 'on' : ''}`} onClick={() => setHlOn(!hlOn)} data-testid="acc-toggle" title="조표·임시표로 바뀐 음(♯·♭)에 형광펜">♯♭ 표시</button>
           <button className={`mini ${focus ? 'on' : ''}`} onClick={() => setFocus(!focus)} data-testid="focus-toggle">{focus ? '메뉴 보기' : '악보만'}</button>
           <button className="mini" onClick={() => setZoom((z) => Math.max(0.5, Math.round((z - 0.1) * 10) / 10))} aria-label="악보 작게">가−</button>
           <button className="mini" onClick={() => setZoom(1)} aria-label="악보 기본 크기">{Math.round(zoom * 100)}%</button>
           <button className="mini" onClick={() => setZoom((z) => Math.min(2, Math.round((z + 0.1) * 10) / 10))} aria-label="악보 크게">가+</button>
         </span>
       </div>
+      {hlOn && (
+        <div className="acc-bar" data-testid="acc-bar">
+          {accNames.length === 0 ? <span className="muted small">이 구간에는 ♯·♭이 붙는 음이 없어요.</span> : (
+            <>
+              <span className="muted small">형광펜</span>
+              {accNames.map((a) => {
+                const off = accSkip.includes(a);
+                return <button key={a} className={`chip acc-chip ${off ? '' : 'on'}`} onClick={() => setAccSkip(off ? accSkip.filter((x) => x !== a) : [...accSkip, a])} aria-pressed={!off} data-testid="acc-chip">{a}</button>;
+              })}
+              <span className="muted small">익숙한 음은 눌러서 빼요</span>
+            </>
+          )}
+        </div>
+      )}
       <div className="score-sheet">
         {rendering && <p className="muted small">악보를 그리는 중…</p>}
         {renderError && <p className="error">{renderError}</p>}
@@ -945,6 +989,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
         <div ref={sheetWrap} className={`sheet-wrap ${tool !== 'none' ? 'marking' : ''}`} onClick={(e) => onSheetTap(e.clientX, e.clientY)} data-testid="sheet-wrap">
           <div ref={holder} data-testid="osmd" />
           <div className="mark-layer" aria-hidden>
+            {accPos.map(({ key, x, y, w, h }) => <span key={`a${key}`} className="acc-hl" style={{ left: x, top: y, width: w, height: h }} data-testid="acc-hl" />)}
             {devPos.map(({ key, x, y, up, label, color }) => (
               <span key={`d${key}`} className={`dev-tag ${up ? 'up' : 'down'}`} style={{ left: x, top: y, color }} data-testid="dev-tag">{up ? '▲' : '▼'}{label}</span>
             ))}

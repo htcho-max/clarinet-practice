@@ -17,7 +17,16 @@ export interface Art {
   /** 앞에 붙은 꾸밈음 (재생 때만, 채점 안 함) */
   grace?: number[];
 }
-export interface ScoreNote { measure: number; index: number; midi: number; beat: number; dur: number; art?: Art }
+export interface ScoreNote {
+  measure: number; index: number; midi: number; beat: number; dur: number; art?: Art;
+  /** 임시표·조표로 바뀐 음이면 그 철자 (예 "B♭", "F♯", "E♯"). 바뀌지 않은 음은 없음 */
+  acc?: string;
+}
+const ACC_SIGN: Record<string, string> = { '-2': '𝄫', '-1': '♭', '1': '♯', '2': '𝄪' };
+/** <pitch> → 바뀐 음 철자 (alter 가 0 이면 undefined) */
+export function accName(step: string, alter: number): string | undefined {
+  return alter ? `${step}${ACC_SIGN[String(alter)] ?? (alter > 0 ? '♯' : '♭')}` : undefined;
+}
 export interface ParsedScore {
   title: string;
   measures: number[];
@@ -228,7 +237,7 @@ function parseDoc(doc: Document, opt: ParseOptions): ParsedScore {
       }
       if (!isChord) { contAt = null; tieOpen = tieStart; } else if (tieStart) tieOpen = true;
       if (isChord && prev && prev.measure === num && prev.beat === start) {
-        if (midi > prev.midi) { prev.midi = midi; if (track) els[els.length - 1] = el; } // 화음은 가장 높은 음으로 채점
+        if (midi > prev.midi) { prev.midi = midi; prev.acc = accName(text(p, 'step'), Number(text(p, 'alter') || '0')); if (track) els[els.length - 1] = el; } // 화음은 가장 높은 음으로 채점
         continue;
       }
       const art: Art = {};
@@ -239,7 +248,8 @@ function parseDoc(doc: Document, opt: ParseOptions): ParsedScore {
       const kind = has('trill-mark') ? 'trill' : has('inverted-mordent') ? 'invmordent' : has('mordent') ? 'mordent' : has('turn') ? 'turn' : null;
       if (kind) art.orn = { kind, ...neighbors(midi, fifths) };
       if (pendingGrace.length) { art.grace = pendingGrace; pendingGrace = []; }
-      notes.push({ measure: num, index: 0, midi, beat: start, dur, art });
+      const acc = accName(text(p, 'step'), Number(text(p, 'alter') || '0'));
+      notes.push({ measure: num, index: 0, midi, beat: start, dur, art, ...(acc ? { acc } : {}) });
       if (track) { els.push(el); tieEls.push([]); }
     }
     const whole = Array.from(m.getElementsByTagName('rest')).some((r) => r.getAttribute('measure') === 'yes');
