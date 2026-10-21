@@ -1,3 +1,4 @@
+import { fullscreenSupported, appFullscreen, fullscreenPref, setFullscreenPref, enterFullscreen } from '../state/fullscreen';
 import { useSettings } from '../state/settings';
 import { DEFAULT_ROUTINE } from '../data/settings';
 import { INSTRUMENTS, type Instrument } from '../audio/notes';
@@ -12,6 +13,7 @@ import { TOLERANCES, tolFor, type ToleranceId } from '../score/tolerance';
 export function SettingsSheet({ onClose }: { onClose: () => void }) {
   const { settings, update } = useSettings();
   const [updateMsg, setUpdateMsg] = useState('');
+  const [fsPref, setFsPref] = useState(fullscreenPref);
 
   const [busy, setBusy] = useState(false);
   const [dataMsg, setDataMsg] = useState('');
@@ -71,6 +73,11 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
         <div className="row-setting">
           <label><input type="checkbox" checked={settings.wakeLock} onChange={(e) => update({ wakeLock: e.target.checked })} /> 연습 중 화면 꺼짐 방지</label>
         </div>
+        {fullscreenSupported() && !appFullscreen() && (
+          <div className="row-setting">
+            <label><input type="checkbox" checked={fsPref} onChange={(e) => { setFsPref(e.target.checked); setFullscreenPref(e.target.checked); if (e.target.checked) void enterFullscreen(); }} data-testid="fullscreen-setting" /> 열 때 전체 화면으로 <small className="muted">(상태 표시줄·주소창 숨김, 뒤로 버튼이나 위쪽 ⛶ 로 나가기)</small></label>
+          </div>
+        )}
         <div className="row-setting">
           <label><input type="checkbox" checked={settings.itemAlert} onChange={(e) => update({ itemAlert: e.target.checked })} data-testid="item-alert-setting" /> 항목 시간 끝 알림 (짧은 소리·진동)</label>
         </div>

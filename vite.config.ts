@@ -29,7 +29,9 @@ export default defineConfig(({ mode }) => ({
         description: '클라리넷·플룻 튜너, 운지표, 롱톤·텅잉, 악보 채점, 연습 기록',
         theme_color: '#1f2937',
         background_color: '#111827',
-        display: 'standalone',
+        // 설치한 앱은 전체 화면으로 (지원 안 하면 standalone)
+        display: 'fullscreen',
+        display_override: ['fullscreen', 'standalone'],
         orientation: 'any', // 태블릿 가로(보면대)도
         lang: 'ko',
         icons: [

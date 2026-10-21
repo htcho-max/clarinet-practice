@@ -736,6 +736,34 @@ try {
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
     await browser.close();
   }
+
+  // ── 13. 전체 화면 ──
+  {
+    const { browser, page, errors } = await launch('bb466.wav');
+    ok(await seen(page.getByTestId('fullscreen-toggle')), '전체 화면 버튼');
+    await page.getByTestId('fullscreen-toggle').click();
+    await page.waitForTimeout(600);
+    ok(await page.evaluate(() => !!document.fullscreenElement), '누르면 전체 화면');
+    ok(/나가기/.test(await page.getByTestId('fullscreen-toggle').getAttribute('aria-label')), '버튼이 나가기로 바뀜');
+    await page.getByTestId('fullscreen-toggle').click();
+    await page.waitForTimeout(600);
+    ok(await page.evaluate(() => !document.fullscreenElement), '다시 누르면 나감');
+    // 열 때 전체 화면: 설정 켜고 다시 연 뒤 첫 터치
+    await page.getByRole('button', { name: '설정' }).click();
+    await page.getByTestId('fullscreen-setting').check();
+    await page.waitForTimeout(500);
+    await page.evaluate(() => document.exitFullscreen().catch(() => {}));
+    await page.reload();
+    await page.waitForTimeout(800);
+    ok(await page.evaluate(() => !document.fullscreenElement), '다시 열면 아직 아님 (터치 전)');
+    await tab(page, 'tuner');
+    await page.waitForTimeout(600);
+    ok(await page.evaluate(() => !!document.fullscreenElement), '첫 터치에 전체 화면');
+    const m = await (await fetch(URL + 'manifest.webmanifest')).json();
+    ok(m.display === 'fullscreen' && m.display_override?.[0] === 'fullscreen', `설치한 앱은 전체 화면 (${m.display})`);
+    ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
+    await browser.close();
+  }
 } catch (e) {
   console.log('FAIL 예외', e.message.split('\n')[0]);
   process.exitCode = 1;

@@ -542,3 +542,9 @@ button.mini.on { border-color: var(--accent); color: var(--accent); font-weight:
 .sheet-nav .session-controls button { white-space: nowrap; }
 .key-shift { border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 4px; display: flex; flex-direction: column; gap: 4px; }
 .key-shift b[data-testid=key-name] { min-width: 72px; text-align: center; }
+
+/* 전체 화면 버튼 */
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fs-btn { border: none; background: none; min-height: 36px; min-width: 40px; padding: 4px 8px; color: var(--muted); }
+.fs-btn:hover { color: var(--text); }
+:fullscreen .topbar, .fs-app .topbar { padding-top: 8px; }
