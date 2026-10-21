@@ -12,7 +12,9 @@ import { measureStats, reviewChanges, reviewMessage, noteCentsOf, ladderVerdict,
 import { currentGearId, useReviews } from '../state/useGear';
 import { GearPicker } from '../components/GearPicker';
 import { alignNotes, summarizeScore, type Played, type Scored } from '../score/align';
-import { createOSMD, colorNotes, noteElements, showParts, setDrawRange, paintNotes } from '../score/osmd';
+import { createOSMD, colorNotes, noteElements, showParts, setDrawRange, paintNotes, systemRows } from '../score/osmd';
+import { ScoreFollower, followScrollDelta } from '../score/follow';
+import { freqToMidiFloat } from '../audio/notes';
 import { planPlayback, scorePlayer, slicePlan, instFor, type Voice, type AccPart } from '../score/player';
 import { analyzeRhythm, rhythmTone } from '../score/rhythm';
 import { NoteSegmenter, equalRef } from '../audio/segment';
@@ -291,6 +293,8 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
   const setScoreMetro = (v: 'off' | 'visual' | 'sound') => { setScoreMetroS(v); try { localStorage.setItem('clarinet-score-metro', v); } catch { /* 무시 */ } };
   /** 채점 중 지금 내는 음 (튜너보다 천천히) */
   const [livePitch, setLivePitchS] = useState<boolean>(() => { try { return localStorage.getItem('clarinet-score-live-pitch') !== '0'; } catch { return true; } });
+  const [scoreFollow, setScoreFollowS] = useState(() => { try { return localStorage.getItem('clarinet-score-follow') !== '0'; } catch { return true; } });
+  const setScoreFollow = (v: boolean) => { setScoreFollowS(v); try { localStorage.setItem('clarinet-score-follow', v ? '1' : '0'); } catch { /* 무시 */ } };
   const setLivePitch = (v: boolean) => { setLivePitchS(v); try { localStorage.setItem('clarinet-score-live-pitch', v ? '1' : '0'); } catch { /* 무시 */ } };
   const beatDot = useRef<HTMLSpanElement | null>(null);
   const beatTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -412,6 +416,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
         colorNotes(osmd.current, new Map(), myPart);
         osmd.current.render();
         els.current = noteElements(osmd.current, myPart);
+        rowsRef.current = systemRows(osmd.current); lastRow.current = -1;
         setRenderTick((x) => x + 1);
         lit.current = [];
         if (litKey.current) highlight(litKey.current, false); // 다시 그려도 지금 음 강조 유지
@@ -565,6 +570,8 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
   const segRef = useRef<NoteSegmenter | null>(null);
   /** 채점을 시작할 때의 구간 (듣는 중에 구간을 바꿔도 채점은 이 구간으로) */
   const listenCtx = useRef<{ expected: typeof expected; from: number; to: number; inSession: boolean; ladder?: number } | null>(null);
+  const followRef = useRef<ScoreFollower | null>(null);
+  const followShown = useRef(-1);
 
   useEffect(() => {
     if (!listening) return;
@@ -575,6 +582,17 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
       if (r.freq !== null && Number.isFinite(r.db)) dbTrack.current.push([r.time, r.db]);
       const n = seg.push(r.time, r.freq);
       if (n) { played.current.push({ midi: n.midi, cents: n.settledCents ?? n.meanCents, start: n.start, db: meanDb(dbTrack.current, n.start + 0.05, n.end) }); tick((x) => x + 1); }
+      // 박자·반주 없이 채점할 때: 연주를 듣고 악보 따라가기
+      const f = followRef.current;
+      if (f && !playingRef.current) {
+        if (n) f.onNote(n.midi);
+        const idx = f.onLive(r.freq === null ? null : Math.round(freqToMidiFloat(r.freq, settings.a4)));
+        if (idx !== followShown.current && idx >= 0) {
+          followShown.current = idx;
+          const e = listenCtx.current?.expected[idx];
+          if (e) { highlight(`${e.measure}:${e.index}`); setNowMeasure(e.measure); }
+        }
+      }
     });
     return unsub;
   }, [listening, settings.a4]);
@@ -596,7 +614,44 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
     const ids = key ? els.current.get(key) ?? [] : [];
     lit.current = ids.map((id) => document.getElementById(id) ?? document.getElementById(`vf-${id}`)).filter((x): x is HTMLElement & SVGGElement => !!x) as unknown as SVGGElement[];
     lit.current.forEach((g) => g.classList.add('now-note'));
-    if (scroll) lit.current[0]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: LITE ? 'auto' : 'smooth' });
+    if (scroll && lit.current[0]) followScroll(lit.current[0]);
+  }
+  /** 지금 음이 있는 줄이 보이는 영역 위에서 2~3번째 줄에 오게 (줄이 바뀔 때만 넘김) */
+  const rowsRef = useRef<{ top: number; bottom: number }[]>([]);
+  const lastRow = useRef(-1);
+  function followScroll(el: Element) {
+    const behavior: ScrollBehavior = LITE ? 'auto' : 'smooth';
+    const host = holder.current;
+    const r = el.getBoundingClientRect();
+    if (!host || !r.height) { el.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior }); return; }
+    const svg = host.querySelector('svg');
+    const base = (svg ?? host).getBoundingClientRect();
+    const cy = (r.top + r.bottom) / 2 - base.top;
+    const rows = rowsRef.current;
+    let ri = rows.findIndex((x) => cy >= x.top - 8 && cy <= x.bottom + 8);
+    if (ri < 0 && rows.length) ri = rows.reduce((b, x, i) => (Math.abs((x.top + x.bottom) / 2 - cy) < Math.abs((rows[b].top + rows[b].bottom) / 2 - cy) ? i : b), 0);
+    const row = ri >= 0 ? rows[ri] : { top: cy - 40, bottom: cy + 40 };
+    const lineH = rows.length > 1 ? Math.max(40, (rows[rows.length - 1].top - rows[0].top) / (rows.length - 1)) : (row.bottom - row.top) * 1.4;
+    // 가로로 넘치면 음이 보이게 (확대했을 때)
+    const sheet = host.closest('.score-sheet') as HTMLElement | null;
+    if (sheet && sheet.scrollWidth > sheet.clientWidth + 4) {
+      const sr = sheet.getBoundingClientRect();
+      if (r.left < sr.left + 20 || r.right > sr.right - 20) sheet.scrollBy({ left: r.left - sr.left - sheet.clientWidth / 3, behavior });
+    }
+    if (ri >= 0 && ri === lastRow.current) return;
+    lastRow.current = ri;
+    let sc: HTMLElement | null = host.parentElement;
+    while (sc && !(/(auto|scroll)/.test(getComputedStyle(sc).overflowY) && sc.scrollHeight > sc.clientHeight + 4)) sc = sc.parentElement;
+    const rowTop = base.top + row.top;
+    if (sc) {
+      const vr = sc.getBoundingClientRect();
+      const d = followScrollDelta(rowTop, vr.top, sc.clientHeight, lineH);
+      if (d !== null) sc.scrollBy({ top: d, behavior });
+    } else {
+      const floatH = document.querySelector('.float-ctl')?.getBoundingClientRect().height ?? 0;
+      const d = followScrollDelta(rowTop, 0, window.innerHeight - floatH, lineH);
+      if (d !== null) window.scrollBy({ top: d, behavior });
+    }
   }
   const curIdx = useRef(0);
   async function playRange(resumeAt?: number, o: { keepListening?: boolean; muteMine?: boolean; autoStop?: boolean; click?: boolean | 'visual'; acc?: boolean } = {}) {
@@ -680,6 +735,9 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
     if (!pitchTracker.running) return; // 마이크를 못 열면 시작하지 않음 (오류 문구는 pitch.error)
     runStart.current = Date.now();
     listenCtx.current = { expected, from, to, inSession: !!session && session.runningSince !== null, ladder: ladderOn ? playBpm : undefined };
+    followRef.current = scoreFollow ? new ScoreFollower(expected.map((e) => e.midi)) : null;
+    followShown.current = -1; lastRow.current = -1;
+    if (scoreFollow && expected[0]) { highlight(`${expected[0].measure}:${expected[0].index}`); setNowMeasure(expected[0].measure); }
     if (recOn) { try { await recorder.start(settings.a4); } catch { /* 녹음 못 해도 채점은 계속 */ } }
     listeningRef.current = true;
     setListening(true);
@@ -697,6 +755,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
     listeningRef.current = false;
     if (endTimer.current) { clearTimeout(endTimer.current); endTimer.current = null; }
     if (playingRef.current) stopPlay();
+    if (followRef.current) { followRef.current = null; highlight(null, false); setNowMeasure(null); }
     // 마지막 음까지 모으고 바로 채점
     const last_ = segRef.current?.flush();
     if (last_) played.current.push({ midi: last_.midi, cents: last_.settledCents ?? last_.meanCents, start: last_.start, db: meanDb(dbTrack.current, last_.start + 0.05, last_.end) });
@@ -1015,6 +1074,9 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
               <button key={id} type="button" className={`chip ${tol.id === id ? 'on' : ''}`} title={TOLERANCES[id].hint} onClick={() => updateSettings({ pitchTolerance: id })} data-testid={`tol-${id}`}>{TOLERANCES[id].label} ±{TOLERANCES[id].good}/{TOLERANCES[id].warn}</button>
             ))}
           </div>
+        )}
+        {!listening && (
+          <label className="small"><input type="checkbox" checked={scoreFollow} onChange={(e) => setScoreFollow(e.target.checked)} data-testid="score-follow" /> 연주를 듣고 악보 따라가기 (지금 불 음 표시, 줄이 바뀌면 악보가 2~3번째 줄에 오도록 자동으로 넘겨요{scoreMetro !== 'off' || ladderOn ? ' — 박자·사다리를 켜면 박에 맞춰 따라가요' : ''})</label>
         )}
         {!listening && (
           <label className="small"><input type="checkbox" checked={livePitch} onChange={(e) => setLivePitch(e.target.checked)} data-testid="score-live-pitch" /> 연주하는 동안 지금 내는 음 보기 (튜너보다 천천히 움직여요)</label>

@@ -169,10 +169,19 @@ try {
     await page.waitForTimeout(800);
     ok(await seen(page.getByTestId('tol-normal')) && /\bon\b/.test(await page.getByTestId('tol-normal').getAttribute('class')), '판정 기준 칩 (기본 보통)');
     await page.getByTestId('score-start').click();
-    await page.waitForTimeout(2500);
+    const follow = new Set();
+    for (let i = 0; i < 12; i++) {
+      await page.waitForTimeout(200);
+      follow.add(await page.evaluate(() => { const g = document.querySelector('.now-note'); return g ? Math.round(g.getBoundingClientRect().left) : -1; }));
+    }
     const lp = await page.getByTestId('live-pitch').first().textContent().catch(() => '');
     ok(/[A-G]/.test(lp ?? ''), `채점 중 지금 내는 음 (${lp})`);
-    await page.waitForTimeout(2700);
+    for (let i = 0; i < 13; i++) {
+      await page.waitForTimeout(200);
+      follow.add(await page.evaluate(() => { const g = document.querySelector('.now-note'); return g ? Math.round(g.getBoundingClientRect().left) : -1; }));
+    }
+    follow.delete(-1);
+    ok(follow.size >= 3, `연주를 듣고 악보 따라가기: 지금 음 표시가 ${follow.size}곳으로 옮겨 감`);
     await page.getByTestId('score-stop').click();
     await page.waitForTimeout(1200);
     const res = await page.getByTestId('score-result').textContent();
@@ -707,6 +716,20 @@ try {
     await page.waitForTimeout(800);
     ok((await page.getByTestId('acc-chip').allTextContents()).join(' ') === 'B♭ E♭ A♭', `E♭장조 형광펜 칩 (${(await page.getByTestId('acc-chip').allTextContents()).join(' ')})`);
     await page.screenshot({ path: 'scripts/shot-sheet.png', fullPage: true });
+    // 재생하면 지금 줄이 화면 위에서 2~3번째 줄 자리에 오도록 넘어감 (11줄 악보)
+    await page.getByTestId('play-bpm').fill('200');
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.getByTestId('play-toggle').click();
+    const tops = [];
+    for (let i = 0; i < 16; i++) {
+      await page.waitForTimeout(600);
+      tops.push(await page.evaluate(() => { const g = document.querySelector('.now-note'); return g ? [Math.round(g.getBoundingClientRect().top), Math.round(window.scrollY)] : null; }));
+    }
+    await page.getByTestId('play-toggle').click().catch(() => {});
+    const seenT = tops.filter(Boolean);
+    const late = seenT.slice(-6);
+    ok(seenT.length >= 8 && Math.max(...seenT.map((x) => x[1])) > 300, `재생 따라 악보 넘김 (scrollY 최대 ${Math.max(0, ...seenT.map((x) => x[1]))})`);
+    ok(late.every((x) => x[0] > 0 && x[0] < 844 * 0.65), `지금 음이 화면 위쪽에 머묾 (${late.map((x) => x[0]).join(',')})`);
     await page.getByTestId('sheet-next').click();
     await page.waitForFunction(() => /A♭장조/.test(document.querySelector('.score-title')?.textContent ?? ''), null, { timeout: 5000 }).catch(() => {});
     ok(/A♭장조/.test(await page.locator('.score-title').textContent()), '다음 조 → A♭장조');
