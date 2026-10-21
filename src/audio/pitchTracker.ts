@@ -1,3 +1,5 @@
+import { LITE } from '../state/lite';
+import { markBusy, clearBusy } from '../state/crashGuard';
 import { PitchDetector } from 'pitchy';
 import { getAudioContext, resumeAudio } from './context';
 import { analyzeFrame } from './analyze';
@@ -30,6 +32,7 @@ class PitchTracker {
   private silentFrames = 0;
   private lastFreq: number | null = null;
   minDb = -50;
+  private frame = 0;
 
   get running() { return this.stream !== null; }
   /** 녹음용으로 같은 마이크 스트림을 씀 */
@@ -47,10 +50,12 @@ class PitchTracker {
     this.analyser.fftSize = BUFFER;
     this.analyser.smoothingTimeConstant = 0;
     this.source.connect(this.analyser);
+    markBusy('mic');
     this.loop();
   }
 
   stop() {
+    clearBusy('mic');
     cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.source?.disconnect();
@@ -71,6 +76,8 @@ class PitchTracker {
     this.raf = requestAnimationFrame(this.loop);
     const an = this.analyser;
     if (!an) return;
+    // 가벼운 모드: 두 화면마다 한 번 분석 (약 30번/초)
+    if (LITE && (this.frame = (this.frame + 1) % 2) === 1) return;
     const ctx = getAudioContext();
     an.getFloatTimeDomainData(this.buf);
     const now = ctx.currentTime;

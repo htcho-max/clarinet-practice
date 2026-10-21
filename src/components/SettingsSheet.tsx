@@ -1,3 +1,5 @@
+import { autoLite, deviceMemory } from '../state/lite';
+import { crashLog } from '../state/crashGuard';
 import { fullscreenSupported, appFullscreen, fullscreenPref, setFullscreenPref, enterFullscreen } from '../state/fullscreen';
 import { useSettings } from '../state/settings';
 import { DEFAULT_ROUTINE } from '../data/settings';
@@ -82,6 +84,15 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
           <label><input type="checkbox" checked={settings.itemAlert} onChange={(e) => update({ itemAlert: e.target.checked })} data-testid="item-alert-setting" /> 항목 시간 끝 알림 (짧은 소리·진동)</label>
         </div>
 
+        <div className="row-setting col" data-testid="perf-setting">
+          <span>성능 <small className="muted">(앱이 가끔 꺼지면 가벼운 모드)</small></span>
+          <div className="segmented small">
+            {([['auto', `자동 (${autoLite() ? '가벼움' : '보통'})`], ['lite', '가벼운 모드'], ['full', '보통']] as const).map(([id, label]) => (
+              <button key={id} className={(settings.perfMode ?? 'auto') === id ? 'on' : ''} onClick={() => update({ perfMode: id })} data-testid={`perf-${id}`}>{label}</button>
+            ))}
+          </div>
+          <small className="muted">가벼운 모드: 소리를 조금씩 예약, 음 분석 30번/초, 부드러운 스크롤·겹쳐 칠하기 끔.{deviceMemory() !== null ? ` 이 기기 메모리 약 ${deviceMemory()}GB.` : ''}{crashLog().count ? ` 재생·마이크 중 꺼진 기록 ${crashLog().count}번.` : ''}</small>
+        </div>
         <div className="row-setting col">
           <span>음정 판정 기준 <small className="muted">(악보 채점 색·지금 내는 음·복습함·템포 사다리)</small></span>
           <span className="metro-pick">

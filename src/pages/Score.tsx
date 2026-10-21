@@ -1,3 +1,4 @@
+import { LITE } from '../state/lite';
 import { useToday } from '../state/useToday';
 import { P } from '../instruments/profiles';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -595,7 +596,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
     const ids = key ? els.current.get(key) ?? [] : [];
     lit.current = ids.map((id) => document.getElementById(id) ?? document.getElementById(`vf-${id}`)).filter((x): x is HTMLElement & SVGGElement => !!x) as unknown as SVGGElement[];
     lit.current.forEach((g) => g.classList.add('now-note'));
-    if (scroll) lit.current[0]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    if (scroll) lit.current[0]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: LITE ? 'auto' : 'smooth' });
   }
   const curIdx = useRef(0);
   async function playRange(resumeAt?: number, o: { keepListening?: boolean; muteMine?: boolean; autoStop?: boolean; click?: boolean | 'visual'; acc?: boolean } = {}) {

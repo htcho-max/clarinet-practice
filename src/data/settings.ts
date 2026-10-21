@@ -25,6 +25,8 @@ export interface Settings {
   latencyMs: number;
   /** 음정 판정 기준 (악보 채점 색·지금 내는 음·복습함·템포 사다리) */
   pitchTolerance: ToleranceId;
+  /** 성능: 자동(메모리 4GB 이하면 가벼운 모드) / 가벼운 모드 / 보통 */
+  perfMode: import('../state/lite').PerfMode;
 }
 
 export const DEFAULT_ROUTINE: RoutineItem[] = [
@@ -52,6 +54,7 @@ export const DEFAULT_SETTINGS: Settings = {
   itemAlert: true,
   latencyMs: 0,
   pitchTolerance: 'normal',
+  perfMode: 'auto',
 };
 
 export function mergeSettings(stored: Partial<Settings> | undefined): Settings {

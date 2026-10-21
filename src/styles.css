@@ -548,3 +548,7 @@ button.mini.on { border-color: var(--accent); color: var(--accent); font-weight:
 .fs-btn { border: none; background: none; min-height: 36px; min-width: 40px; padding: 4px 8px; color: var(--muted); }
 .fs-btn:hover { color: var(--text); }
 :fullscreen .topbar, .fs-app .topbar { padding-top: 8px; }
+
+/* 가벼운 모드: 겹쳐 그리기(블렌드) 끄기 */
+html.lite .acc-hl { mix-blend-mode: normal; background: rgba(250, 204, 21, 0.35); }
+.crash-note { border: 1px solid var(--warn); background: var(--warn-zone); }

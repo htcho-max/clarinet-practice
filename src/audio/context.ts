@@ -1,9 +1,11 @@
+import { LITE } from '../state/lite';
 let ctx: AudioContext | null = null;
 
 export function getAudioContext(): AudioContext {
   if (!ctx) {
     const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    ctx = new AC({ latencyHint: 'interactive' });
+    // 가벼운 모드: 버퍼를 넉넉히 (소리 끊김·과부하 줄이기)
+    ctx = new AC({ latencyHint: LITE ? 'playback' : 'interactive' });
   }
   return ctx;
 }

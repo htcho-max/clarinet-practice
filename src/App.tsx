@@ -1,3 +1,5 @@
+import { takeCrash, crashText, type CrashInfo } from './state/crashGuard';
+import { resolveLite } from './state/lite';
 import { ItemAlert } from './components/ItemAlert';
 import { useEffect, useState } from 'react';
 import { TabBar, type TabId } from './components/TabBar';
@@ -24,7 +26,9 @@ export function App({ updatedFrom = null }: { updatedFrom?: string | null }) {
     try { const t = localStorage.getItem('clarinet-tab') as TabId; return TABS.some((x) => x.id === t) ? t : 'today'; } catch { return 'today'; }
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { ready } = useSettings();
+  const { ready, settings, update } = useSettings();
+  // 지난번에 재생·마이크 쓰는 중에 꺼졌으면 알려 주기
+  const [crash, setCrash] = useState<CrashInfo | null>(() => takeCrash());
   const fs = useFullscreen();
   useAutoFullscreen();
   const go = (t: TabId) => { setTab(t); try { localStorage.setItem('clarinet-tab', t); } catch { /* 무시 */ } };
@@ -49,6 +53,18 @@ export function App({ updatedFrom = null }: { updatedFrom?: string | null }) {
         )}
       </header>
       <StatusBar tab={tab} go={go} />
+      {crash && ready && (
+        <div className="card crash-note" role="alert" data-testid="crash-note">
+          <b>지난번에 {crashText(crash)} 중에 앱이 갑자기 꺼졌어요.</b>
+          {resolveLite(settings.perfMode)
+            ? <p className="hint">가벼운 모드가 켜져 있어요. 다른 앱을 닫고, 긴 곡은 4~8마디씩 나눠 연습하면 덜 꺼져요.</p>
+            : <p className="hint">기기 메모리가 부족했을 수 있어요. 가벼운 모드를 켜면 소리 예약·음 분석·화면 효과를 줄여서 덜 꺼져요.</p>}
+          <div className="session-controls">
+            {!resolveLite(settings.perfMode) && <button className="primary" onClick={() => { update({ perfMode: 'lite' }); setCrash(null); }} data-testid="crash-lite">가벼운 모드 켜기</button>}
+            <button onClick={() => setCrash(null)}>닫기</button>
+          </div>
+        </div>
+      )}
       <main>
         {!ready ? null : (
           <>

@@ -1,3 +1,5 @@
+import { LITE } from '../state/lite';
+import { markBusy, clearBusy } from '../state/crashGuard';
 import { resumeAudio } from '../audio/context';
 import { waveFor } from '../audio/timbre';
 import { midiToFreq, getTranspose } from '../audio/notes';
@@ -166,7 +168,7 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
 
 /** 악기 소리로 재생 (실음으로 옮겨서). stop() 을 돌려줌 */
 /** 이만큼(초) 앞까지만 조금씩 예약 (긴 곡도 휴대폰에서 가볍게) */
-const AHEAD = 2.5;
+const ahead = () => (LITE ? 1.2 : 2.5); // 가벼운 모드는 더 짧게
 
 /** 꾸밈음·트릴 등을 실제로 낼 짧은 음들로 (시각은 계획의 초). 꾸밈 없는 음은 그 음 하나 */
 export interface Piece { midi: number; time: number; len: number; legato: boolean; main: boolean }
@@ -225,6 +227,7 @@ export class ScorePlayer {
     const useSample = (opts.voice ?? 'sample') === 'sample' && (await loadSamples(ctx));
     if (gen !== this.gen) return;
     this.playing = true;
+    markBusy('play');
     this.usedSample = useSample;
     const t0 = ctx.currentTime + 0.15;
     const wave = waveFor(ctx);
@@ -319,13 +322,13 @@ export class ScorePlayer {
     let ptr = 0;
     const pump = () => {
       if (gen !== this.gen) return;
-      const horizon = ctx.currentTime + AHEAD - t0;
+      const horizon = ctx.currentTime + ahead() - t0;
       while (ptr < jobs.length && jobs[ptr].at <= horizon) jobs[ptr++].run();
       if (ptr >= jobs.length && this.pumpTimer) { clearInterval(this.pumpTimer); this.pumpTimer = null; }
     };
     pump();
     if (ptr < jobs.length) this.pumpTimer = setInterval(pump, 250);
-    this.timers.push(setTimeout(() => { this.playing = false; opts.onNote?.(null); opts.onEnd?.(); }, (t0 - ctx.currentTime + plan.total + lat) * 1000 + 100));
+    this.timers.push(setTimeout(() => { this.playing = false; clearBusy('play'); opts.onNote?.(null); opts.onEnd?.(); }, (t0 - ctx.currentTime + plan.total + lat) * 1000 + 100));
   }
 
   stop() {
@@ -338,6 +341,7 @@ export class ScorePlayer {
     for (const n of this.nodes) { try { n.stop(now); } catch { /* 이미 끝남 */ } }
     this.nodes.clear();
     this.playing = false;
+    clearBusy('play');
   }
 }
 

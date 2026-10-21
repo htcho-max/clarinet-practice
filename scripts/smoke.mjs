@@ -759,6 +759,34 @@ try {
     await tab(page, 'tuner');
     await page.waitForTimeout(600);
     ok(await page.evaluate(() => !!document.fullscreenElement), '첫 터치에 전체 화면');
+    // 재생 중에 꺼진 것처럼: 표시를 남기고 다시 열기 → 알림 → 가벼운 모드
+    // (다시 열 때 pagehide 가 표시를 지우므로, 새로 열리는 순간에 표시를 넣음 — 실제로 꺼지면 pagehide 가 안 옴)
+    await page.addInitScript(() => { if (!sessionStorage.getItem('fake-crash')) { sessionStorage.setItem('fake-crash', '1'); localStorage.setItem('clarinet-busy', JSON.stringify({ kinds: ['play'], at: Date.now() })); } });
+    await page.reload();
+    ok(await seen(page.getByTestId('crash-note')), '지난번 재생 중 꺼짐 알림');
+    await page.getByTestId('crash-lite').click();
+    await page.waitForTimeout(300);
+    ok(await page.evaluate(() => document.documentElement.classList.contains('lite')), '가벼운 모드 켜짐');
+    await page.reload();
+    await page.waitForTimeout(800);
+    ok(!(await page.getByTestId('crash-note').count()), '정상으로 다시 열면 알림 없음');
+    ok(await page.evaluate(() => document.documentElement.classList.contains('lite')), '가벼운 모드 기억');
+    await tab(page, 'score');
+    await page.getByTestId('score-file').setInputFiles(path.resolve('scripts/test-score.musicxml'));
+    await page.waitForTimeout(1500);
+    await page.getByTestId('play-bpm').fill('200');
+    await page.getByTestId('play-toggle').click();
+    await page.waitForTimeout(1200);
+    ok(await page.evaluate(() => !!localStorage.getItem('clarinet-busy')), '재생 중에는 표시');
+    await page.waitForTimeout(4000);
+    ok(await page.evaluate(() => !localStorage.getItem('clarinet-busy')), '재생 끝나면 표시 지움');
+    ok((await page.locator('[data-testid=osmd] svg').count()) >= 1, '가벼운 모드에서도 재생·악보 정상');
+    await tab(page, 'tuner');
+    await page.getByTestId('mic').click();
+    await page.waitForTimeout(2500);
+    const lc = num(await page.getByTestId('cents').textContent());
+    ok((await page.getByTestId('note').textContent()) === 'C5' && Math.abs(lc - 20) <= 3, `가벼운 모드 튜너 C5 ${lc} (기대 +20)`);
+    await page.getByTestId('mic').click();
     const m = await (await fetch(URL + 'manifest.webmanifest')).json();
     ok(m.display === 'fullscreen' && m.display_override?.[0] === 'fullscreen', `설치한 앱은 전체 화면 (${m.display})`);
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);

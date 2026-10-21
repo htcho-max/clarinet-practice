@@ -1,3 +1,4 @@
+import { setLite, resolveLite } from './lite';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { db } from '../data/db';
 import { DEFAULT_SETTINGS, mergeSettings, type Settings } from '../data/settings';
@@ -33,6 +34,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => { setOutputLatency((settings.latencyMs ?? 0) / 1000); }, [settings.latencyMs]);
+  useEffect(() => { setLite(resolveLite(settings.perfMode)); }, [settings.perfMode]);
 
   return <SettingsContext.Provider value={{ settings, update, ready }}>{children}</SettingsContext.Provider>;
 }
