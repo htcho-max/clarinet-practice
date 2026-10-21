@@ -189,6 +189,8 @@ export interface ScoreFile {
   ladder?: { bpm: number; best: number; at: number };
   /** 앱에서 음을 고치기 전 처음 악보 (처음 고칠 때 한 번 저장) */
   origXml?: string;
+  /** 조 바꾸기 (반음, 원래 악보는 그대로 두고 보여줄 때만 옮김) */
+  keyShift?: number;
   /** 목록용 가벼운 열쇠 (자동으로 채움): 악보 XML 을 읽지 않고 목록을 그리려고 인덱스에 넣음 */
   listKey?: ScoreListKey;
 }

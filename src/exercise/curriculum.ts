@@ -1,11 +1,11 @@
 import { keyById, type Key } from './theory';
-import { scale, arpeggio, thirds, seq4, chromatic, twelfths, breakDrill, harmonics, octaveSlurs, fluteBreakDrill, etude, autoRange, type Phrase, type RangeOptions } from './patterns';
+import { scaleSheet, scale, arpeggio, thirds, seq4, chromatic, twelfths, breakDrill, harmonics, octaveSlurs, fluteBreakDrill, etude, autoRange, type Phrase, type RangeOptions } from './patterns';
 import { INST, type InstrumentId } from '../instruments/current';
 import { artBase, variantById, ART_BASES, type ArtBaseId } from './articulation';
 import { build, type Bowing, type Built } from './build';
 import { songById, buildSong } from './songs';
 
-export type PatternId = 'art' | 'song' | 'scale' | 'arpeggio' | 'thirds' | 'seq4' | 'chromatic' | 'twelfths' | 'breakDrill' | 'harmonics' | 'octaveSlurs' | 'etude';
+export type PatternId = 'art' | 'song' | 'scaleSheet' | 'scale' | 'arpeggio' | 'thirds' | 'seq4' | 'chromatic' | 'twelfths' | 'breakDrill' | 'harmonics' | 'octaveSlurs' | 'etude';
 /** 음역 (악보음): 낮은 음역(레지스터 키 없이) / 브레이크 조금 넘어 / 클라리온 C6 까지 */
 export type RangeSet = 'low' | 'cross' | 'full';
 export const PATTERNS: { id: PatternId; label: string }[] = [
@@ -45,7 +45,14 @@ export interface ExerciseSpec {
   song?: string; // 쉬운 곡·첫 소리 연습
   /** 이 음(악보음 midi) 위의 으뜸음에서 시작 */
   lo?: number;
+  /** 음계 악보: 단조 형태 */
+  form?: import('./theory').MinorForm;
 }
+export const MINOR_FORMS: { id: import('./theory').MinorForm; label: string }[] = [
+  { id: 'natural', label: '자연' }, { id: 'harmonic', label: '화성' }, { id: 'melodic', label: '가락' },
+];
+/** 음계 악보 진도 id (조·형태·옥타브마다) */
+export const scaleProgressId = (key: string, form: string | undefined, octaves: number) => `sheet-${key}-${form ?? 'major'}-${octaves}`;
 export interface Step { id: string; stage: string; title: string; tip: string; spec: ExerciseSpec; tempo: number }
 
 const CLARINET_STAGES = [
@@ -162,6 +169,22 @@ export function makeExercise(spec: ExerciseSpec, o: MakeOptions, inst: Instrumen
   else if (spec.pattern === 'harmonics') phrases = harmonics();
   else if (spec.pattern === 'octaveSlurs') phrases = octaveSlurs();
   else if (spec.pattern === 'chromatic') phrases = chromatic(r.lo, r.hi);
+  else if (spec.pattern === 'scaleSheet') {
+    // 그 악기가 낼 수 있는 가장 낮은 으뜸음부터 (2옥타브가 안 되면 1옥타브)
+    // 음계 악보는 교재처럼 높은 음까지 (플룻 C7, 클라리넷 G6). 1옥타브를 고르면 낮은 쪽만
+    const full = { lo: rangesFor(inst)[0].r.lo, hi: inst === 'flute' ? 96 : 91 };
+    const want = spec.octaves ?? 2;
+    // 으뜸음에서 으뜸음까지 딱 맞는 것만 (2옥타브가 안 되면 1옥타브)
+    const exact = (n: number) => { const x = autoRange(key, full, n); return x && x[1] - x[0] === 7 * n ? x : null; };
+    const ar = exact(want) ?? exact(1);
+    if (!ar) return { xml: '', notes: [], breakKeys: [], measures: 0, error: `${key.name}는 만들 수 없어요.`, title: '', describe: '' };
+    phrases = scaleSheet(key, ar[0], ar[1], key.mode === 'minor' ? spec.form ?? 'natural' : undefined);
+    const oct = Math.round((ar[1] - ar[0]) / 7);
+    const formLabel = key.mode === 'minor' ? `(${MINOR_FORMS.find((f) => f.id === (spec.form ?? 'natural'))!.label}) ` : '';
+    const title = o.title ?? `${key.name} ${formLabel}음계 · ${oct}옥타브`;
+    const b = build({ title, key, phrases, perBeat, bowing, tempo: o.tempo, breakAt });
+    return { ...b, title, describe: '' };
+  }
   else if (spec.pattern === 'etude') {
     const ar = autoRange(key, r, 2) ?? autoRange(key, r, 1);
     if (!ar) return { xml: '', notes: [], breakKeys: [], measures: 0, error: `${key.name}는 이 음역에서 만들 수 없어요.`, title: '', describe: '' };

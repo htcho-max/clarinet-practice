@@ -20,6 +20,13 @@ export function arpeggio(key: Key, lo: number, hi: number): Phrase[] {
   const up = range(lo, hi).filter((d) => isTriad(key, d));
   return [up.map((d) => sp(key, d, 1, 'harmonic')), up.slice(0, -1).reverse().map((d) => sp(key, d, -1, 'harmonic'))];
 }
+/** 음계 악보 (교재 모양): 음계 오르내림 + 으뜸화음 분산화음 오르내림. 단조는 고른 형태로 */
+export function scaleSheet(key: Key, lo: number, hi: number, form: MinorForm = 'natural'): Phrase[] {
+  const up = range(lo, hi).map((d) => sp(key, d, 1, form));
+  const down = range(hi - 1, lo).map((d) => sp(key, d, -1, form));
+  const arp = range(lo, hi).filter((d) => isTriad(key, d));
+  return [up, down, arp.map((d) => sp(key, d, 1, 'harmonic')), arp.slice(0, -1).reverse().map((d) => sp(key, d, -1, 'harmonic'))];
+}
 /** 3도: 1-3, 2-4, … */
 export function thirds(key: Key, lo: number, hi: number): Phrase[] {
   const up: PNote[] = [], down: PNote[] = [];

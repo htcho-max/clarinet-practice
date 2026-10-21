@@ -691,6 +691,51 @@ try {
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
     await browser.close();
   }
+
+  // ── 12. 장·단음계 악보 + 조 바꾸기 ──
+  {
+    const { browser, page, errors } = await launch('bb466.wav');
+    await tab(page, 'score');
+    await page.getByTestId('open-exercises').click();
+    await page.getByTestId('sheet-major').click();
+    await page.getByTestId('sheet-Eb').click();
+    await page.getByTestId('sheet-nav').waitFor({ timeout: 5000 });
+    await page.waitForTimeout(1200);
+    ok(/E♭장조 음계 · 2옥타브/.test(await page.locator('.score-title').textContent()), `음계 악보 E♭장조 (${await page.locator('.score-title').textContent()})`);
+    await page.getByTestId('acc-toggle').click();
+    await page.getByTestId('len-chips').getByRole('button', { name: '16마디' }).click();
+    await page.waitForTimeout(800);
+    ok((await page.getByTestId('acc-chip').allTextContents()).join(' ') === 'B♭ E♭ A♭', `E♭장조 형광펜 칩 (${(await page.getByTestId('acc-chip').allTextContents()).join(' ')})`);
+    await page.screenshot({ path: 'scripts/shot-sheet.png', fullPage: true });
+    await page.getByTestId('sheet-next').click();
+    await page.waitForFunction(() => /A♭장조/.test(document.querySelector('.score-title')?.textContent ?? ''), null, { timeout: 5000 }).catch(() => {});
+    ok(/A♭장조/.test(await page.locator('.score-title').textContent()), '다음 조 → A♭장조');
+    await page.getByTestId('sheet-relative').click();
+    await page.waitForFunction(() => /F단조/.test(document.querySelector('.score-title')?.textContent ?? ''), null, { timeout: 5000 }).catch(() => {});
+    ok(/F단조 \(.+\) 음계/.test(await page.locator('.score-title').textContent()), `나란한단조 → F단조 (${await page.locator('.score-title').textContent()})`);
+    await page.getByRole('button', { name: '◀ 목록' }).click();
+    await page.getByRole('button', { name: '◀ 목록' }).click();
+    // 내 악보 조 바꾸기 (D장조 → E장조)
+    await page.getByTestId('score-file').setInputFiles(path.resolve('scripts/test-score.musicxml'));
+    await page.waitForTimeout(1500);
+    ok((await page.getByTestId('key-name').textContent()) === 'D장조', '조 바꾸기: 원래 D장조');
+    await page.getByTestId('key-up').click();
+    await page.getByTestId('key-up').click();
+    await page.waitForTimeout(1500);
+    ok((await page.getByTestId('key-name').textContent()) === 'E장조', `+2 → E장조 (${await page.getByTestId('key-name').textContent()})`);
+    ok(await page.getByTestId('edit-toggle').isDisabled(), '옮긴 동안 음 고치기 끔');
+    await page.getByTestId('play-bpm').fill('200');
+    await page.getByTestId('play-toggle').click();
+    await page.waitForTimeout(1500);
+    await page.getByTestId('play-toggle').click().catch(() => {});
+    await page.getByTestId('key-save').click();
+    ok(await seen(page.getByTestId('key-msg')), '이 조로 새 악보 저장');
+    await page.getByTestId('key-reset').click();
+    await page.waitForTimeout(500);
+    ok((await page.getByTestId('key-name').textContent()) === 'D장조', '원래 조로');
+    ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
+    await browser.close();
+  }
 } catch (e) {
   console.log('FAIL 예외', e.message.split('\n')[0]);
   process.exitCode = 1;

@@ -27,7 +27,24 @@ export const KEYS: Key[] = [
   { id: 'Dm', name: 'D단조', tonic: 'D', mode: 'minor', fifths: -1, startD: dOf('D', 4) },
   { id: 'Gm', name: 'G단조', tonic: 'G', mode: 'minor', fifths: -2, startD: dOf('G', 3) },
 ];
-export const keyById = (id: string) => KEYS.find((k) => k.id === id)!;
+/** 음계 악보용 24조 (교재 순서: 5도권을 내림 쪽으로). 이름에 ♭·♯ */
+const K = (id: string, name: string, tonic: string, mode: Mode, fifths: number): Key => ({ id, name, tonic, mode, fifths, startD: dOf(tonic, 4) });
+export const MAJOR_KEYS: Key[] = [
+  K('C', 'C장조', 'C', 'major', 0), K('F', 'F장조', 'F', 'major', -1), K('Bb', 'B♭장조', 'B', 'major', -2), K('Eb', 'E♭장조', 'E', 'major', -3),
+  K('Ab', 'A♭장조', 'A', 'major', -4), K('Db', 'D♭장조', 'D', 'major', -5), K('F#', 'F♯장조', 'F', 'major', 6), K('B', 'B장조', 'B', 'major', 5),
+  K('E', 'E장조', 'E', 'major', 4), K('A', 'A장조', 'A', 'major', 3), K('D', 'D장조', 'D', 'major', 2), K('G', 'G장조', 'G', 'major', 1),
+];
+/** 단조는 나란한조(같은 조표)끼리 같은 자리에 */
+export const MINOR_KEYS: Key[] = [
+  K('Am', 'A단조', 'A', 'minor', 0), K('Dm', 'D단조', 'D', 'minor', -1), K('Gm', 'G단조', 'G', 'minor', -2), K('Cm', 'C단조', 'C', 'minor', -3),
+  K('Fm', 'F단조', 'F', 'minor', -4), K('Bbm', 'B♭단조', 'B', 'minor', -5), K('D#m', 'D♯단조', 'D', 'minor', 6), K('G#m', 'G♯단조', 'G', 'minor', 5),
+  K('C#m', 'C♯단조', 'C', 'minor', 4), K('F#m', 'F♯단조', 'F', 'minor', 3), K('Bm', 'B단조', 'B', 'minor', 2), K('Em', 'E단조', 'E', 'minor', 1),
+];
+// 단조 으뜸음의 변화(B♭단조의 B♭, G♯단조의 G♯ …)는 조표가 정해 줌
+export const ALL_KEYS: Key[] = [...MAJOR_KEYS, ...MINOR_KEYS];
+export const keyById = (id: string) => KEYS.find((k) => k.id === id) ?? ALL_KEYS.find((k) => k.id === id)!;
+/** 장조 ↔ 나란한조(같은 조표의 단조) */
+export const relativeKey = (k: Key) => (k.mode === 'major' ? MINOR_KEYS : MAJOR_KEYS).find((x) => x.fifths === k.fifths)!;
 
 /** 조표의 변화 */
 export function keyAlter(fifths: number, letter: string): number {

@@ -151,7 +151,7 @@ export function toMusicXML(o: { title: string; key: Key; tempo?: number; beats?:
       if (n.tie === 'stop' || n.tie === 'both') x.push('<tie type="stop"/>');
       if (n.tie === 'start' || n.tie === 'both') x.push('<tie type="start"/>');
       x.push(`<voice>1</voice><type>${type}</type>${'<dot/>'.repeat(dots)}`);
-      if (prev !== n.p.alter && !(n.tie === 'stop' || n.tie === 'both')) { x.push(`<accidental>${n.p.alter > 0 ? 'sharp' : n.p.alter < 0 ? 'flat' : 'natural'}</accidental>`); acc.set(accKey, n.p.alter); }
+      if (prev !== n.p.alter && !(n.tie === 'stop' || n.tie === 'both')) { x.push(`<accidental>${n.p.alter >= 2 ? 'double-sharp' : n.p.alter > 0 ? 'sharp' : n.p.alter <= -2 ? 'flat-flat' : n.p.alter < 0 ? 'flat' : 'natural'}</accidental>`); acc.set(accKey, n.p.alter); }
     } else {
       x.push(`<rest${n.dur === MEAS ? ' measure="yes"' : ''}/><duration>${n.dur}</duration><voice>1</voice><type>${type}</type>${'<dot/>'.repeat(dots)}`);
     }
