@@ -103,23 +103,41 @@ export function Score() {
   useEffect(() => { const r = takeScoreRequest(); if (r) { setOpenReq(r); setOpenId(r.scoreId); } }, []);
   const folderName = (id?: string) => folders.find((f) => f.id === id)?.name ?? '분류 안 됨';
 
-  async function importFile(f: File) {
-    setError(null);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  /** 악보 파일 여러 개 한꺼번에. 하나면 바로 열고, 여러 개면 목록에 넣고 결과만 알려 줌. 같은 악보(제목·내용)가 이미 있으면 건너뜀 */
+  async function importFiles(list: File[]) {
+    setError(null); setImportMsg(null);
+    const added: { id: number; title: string }[] = [];
+    const skipped: string[] = [];
+    const failed: string[] = [];
+    const base = Date.now();
     try {
-      if (/\.mxl$/i.test(f.name)) throw new Error('압축된 .mxl 은 아직 못 읽어요. MuseScore 등에서 "MusicXML(.musicxml)"로 내보내 주세요.');
-      const xml = await f.text();
-      const parsed = parseMusicXML(xml);
-      if (!parsed.notes.length) throw new Error('음표가 없는 악보예요.');
-      const piece = pieces.find((p) => p.id === pieceForNew);
-      // 폴더: 고른 폴더 > 연결한 곡의 분류 > 제목으로 짐작
-      const folder = filter !== 'all' && filter !== 'none' ? filter
-        : piece ? await folderForBook(piece.book)
-        : guessFolder(parsed.title, undefined, new Map([1, 2, 3, 4].map((b) => [b, pieces.filter((p) => p.book === b).map((p) => p.title)])));
-      if (folder.startsWith('book-')) await folderForBook(Number(folder.split('-')[1]));
-      const id = await db.scores.add({ title: parsed.title, xml, pieceId: pieceForNew || undefined, folder, createdAt: Date.now() });
-      setOpenId(id);
-    } catch (e) {
-      setError((e as Error).message || '악보를 불러오지 못했어요.');
+      for (const [i, f] of list.entries()) {
+        try {
+          if (/\.mxl$/i.test(f.name)) throw new Error('압축된 .mxl 은 아직 못 읽어요. MuseScore 등에서 "MusicXML(.musicxml)"로 내보내 주세요.');
+          const xml = await f.text();
+          const parsed = parseMusicXML(xml);
+          if (!parsed.notes.length) throw new Error('음표가 없는 악보예요.');
+          if (list.length > 1 && await db.scores.filter((s) => s.title === parsed.title && s.xml === xml).first()) { skipped.push(parsed.title); continue; }
+          const piece = pieces.find((p) => p.id === pieceForNew);
+          // 폴더: 고른 폴더 > 연결한 곡의 분류 > 제목으로 짐작
+          const folder = filter !== 'all' && filter !== 'none' ? filter
+            : piece ? await folderForBook(piece.book)
+            : guessFolder(parsed.title, undefined, new Map([1, 2, 3, 4].map((b) => [b, pieces.filter((p) => p.book === b).map((p) => p.title)])));
+          if (folder.startsWith('book-')) await folderForBook(Number(folder.split('-')[1]));
+          // 고른 순서대로 목록 위에서부터 보이게 (목록은 최근 순)
+          const id = await db.scores.add({ title: parsed.title, xml, pieceId: pieceForNew || undefined, folder, createdAt: base + (list.length - i) });
+          added.push({ id, title: parsed.title });
+        } catch (e) {
+          failed.push(`${f.name}: ${(e as Error).message || '읽지 못했어요'}`);
+        }
+      }
+      if (list.length === 1 && added.length === 1) { setOpenId(added[0].id); return; }
+      if (list.length === 1 && failed.length) { setError(failed[0].replace(/^[^:]*: /, '')); return; }
+      const parts = [added.length ? `악보 ${added.length}개를 불러왔어요.` : '새로 불러온 악보가 없어요.'];
+      if (skipped.length) parts.push(`이미 있는 ${skipped.length}개는 건너뛰었어요.`);
+      setImportMsg(parts.join(' '));
+      if (failed.length) setError(`못 불러온 파일 ${failed.length}개 — ${failed.join(' / ')}`);
     } finally {
       if (file.current) file.current.value = '';
     }
@@ -207,7 +225,7 @@ export function Score() {
       <div className="card">
         <b>악보 불러오기{filter !== 'all' && filter !== 'none' ? ` → ${folderName(filter)}` : ''}</b>
         <p className="hint">
-          MusicXML 파일(.musicxml, .xml)을 고르세요. 악보는 <b>이 기기 안에만</b> 저장되고, 앱이나 GitHub에는 올라가지 않아요.
+          MusicXML 파일(.musicxml, .xml)을 고르세요. 여러 개를 한꺼번에 골라도 돼요 (같은 악보가 이미 있으면 건너뜀). 악보는 <b>이 기기 안에만</b> 저장되고, 앱이나 GitHub에는 올라가지 않아요.
           (교재 악보는 저작권이 있어서 개인 연습용으로만 쓰세요.) 폴더를 골라 두면 그 폴더에 들어가고, 전체일 때는 연결한 곡의 분류나 제목으로 나눠 넣어요. {P.id === 'clarinet' ? 'B♭ 클라리넷 파트 악보(악보음)를 쓰세요.' : '플룻 파트 악보를 쓰세요.'}
         </p>
         <select value={pieceForNew} onChange={(e) => setPieceForNew(e.target.value)} aria-label="연결할 곡">
@@ -215,8 +233,9 @@ export function Score() {
           {pieces.map((p) => <option key={p.id} value={p.id}>{bookLabel(p.book)} · {p.title}</option>)}
         </select>
         <input ref={file} type="file" accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,text/xml" hidden
-          onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} data-testid="score-file" />
-        <button className="primary wide" onClick={() => file.current?.click()}>파일에서 악보 불러오기</button>
+          multiple onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) void importFiles(fs); }} data-testid="score-file" />
+        <button className="primary wide" onClick={() => file.current?.click()}>파일에서 악보 불러오기 (여러 개 고를 수 있어요)</button>
+        {importMsg && <p className="small" data-testid="import-msg">✓ {importMsg}</p>}
         {error && <p className="error">{error}</p>}
       </div>
     </section>

@@ -942,6 +942,25 @@ try {
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
     await browser.close();
   }
+
+  // ── 16. 악보 여러 개 한꺼번에 불러오기 ──
+  {
+    const { browser, page, errors } = await launch('bb466.wav');
+    await tab(page, 'score');
+    await page.waitForTimeout(800);
+    await page.getByTestId('score-file').setInputFiles([path.resolve('scripts/test-score.musicxml'), path.resolve('scripts/test-repeat.musicxml'), path.resolve('scripts/test-pickup.musicxml')]);
+    ok(await seen(page.getByTestId('import-msg'), 5000), `여러 개 불러오기 (${await page.getByTestId('import-msg').textContent().catch(() => '')})`);
+    ok(/3개/.test(await page.getByTestId('import-msg').textContent()), '3개 불러옴');
+    ok((await page.getByTestId('score-open').count()) === 3, `목록에 3개 (${await page.getByTestId('score-open').count()})`);
+    ok(/스모크 테스트 음계/.test(await page.getByTestId('score-open').first().textContent()), '고른 순서대로 위에서부터');
+    await page.getByTestId('score-file').setInputFiles([path.resolve('scripts/test-score.musicxml'), path.resolve('scripts/test-dyn.musicxml')]);
+    await page.waitForTimeout(1500);
+    const m2 = await page.getByTestId('import-msg').textContent();
+    ok(/1개를 불러왔어요/.test(m2) && /이미 있는 1개/.test(m2), `같은 악보는 건너뜀 (${m2})`);
+    ok((await page.getByTestId('score-open').count()) === 4, '목록 4개');
+    ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
+    await browser.close();
+  }
 } catch (e) {
   console.log('FAIL 예외', e.message.split('\n')[0]);
   process.exitCode = 1;
