@@ -7,6 +7,8 @@ export const takeScoreRequest = () => { const p = pending; pending = null; retur
 /** 악보에서 음표를 길게 눌러 운지표에서 그 음 보기 (악보음 midi) */
 export interface FingeringRequest {
   midi: number;
+  /** 운지표에서 처음 보여줄 운지 (0 = 기본, 1~ = 다른 운지) */
+  alt?: number;
   /** 운지표에서 "◀ 악보로" 돌아갈 곳 */
   back?: { scoreId: number; title: string; measure: number; from: number; to: number };
 }

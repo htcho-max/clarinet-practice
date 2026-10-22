@@ -52,10 +52,15 @@ try {
     await page.getByLabel('조 (이조)').selectOption('Bb');
     await page.getByTestId('mic').click();
 
-    // 운지표
+    // 운지표 (맞히기 연습을 관대 기준 ±30 으로 보려고 먼저 설정)
+    await tab(page, 'today');
+    await page.getByRole('button', { name: '설정' }).click();
+    await page.getByTestId('set-tol-relaxed').click();
+    await page.getByRole('dialog').getByRole('button', { name: '닫기' }).click();
     await tab(page, 'fingering');
     ok(await seen(page.getByTestId('fg-card')), '운지 카드');
-    ok((await page.getByTestId('fg-grid').locator('.chip').count()) === 19, `낮은 음역 E3~B♭4 19음 (${await page.getByTestId('fg-grid').locator('.chip').count()})`);
+    ok((await page.getByTestId('fg-grid').locator('.chip').count()) === 40, `음 줄 E3~G6 40음 (${await page.getByTestId('fg-grid').locator('.chip').count()})`);
+    ok(/샬뤼모/.test(await page.getByTestId('fg-grid').textContent()) && /알티시모/.test(await page.getByTestId('fg-grid').textContent()), '음 줄에 음역 이름');
     await page.getByTestId('fg-grid').getByRole('button', { name: 'B♭4' }).click();
     ok(/A 키/.test(await page.getByTestId('fg-card').textContent()) && /레지스터/.test(await page.getByTestId('fg-card').textContent()), 'B♭4 = A 키 + 레지스터');
     ok((await page.getByTestId('fg-card').locator('.fg-on').count()) === 2, 'B♭4 그림에 키 2개 칠함');
@@ -64,6 +69,17 @@ try {
     ok((await page.getByTestId('fg-heard').textContent()) === 'C5', '불어 보기: C5');
     ok(/^C5/.test(await page.getByTestId('fg-card').locator('.note-big').textContent()), '부는 음(C5)의 운지로 바뀜 (가운데 음역으로)');
     ok((await page.getByTestId('fg-card').locator('.fg-on').count()) === 9, `C5 운지: 레지스터+엄지+6구멍+F/C = 9 (${await page.getByTestId('fg-card').locator('.fg-on').count()})`);
+    // 고른 음 맞히기: C5(+20센트)를 관대(±30) 기준으로 0.5초 → 맞음 → 반음 위 C♯5 로
+    await page.getByTestId('fg-practice-mode').click();
+    await page.getByTestId('fg-run').selectOption('up');
+    await page.waitForFunction(() => document.querySelector('[data-testid=fg-grid] [aria-pressed=true]')?.textContent === 'C♯5', null, { timeout: 5000 }).catch(() => {});
+    ok((await page.getByTestId('fg-grid').locator('[aria-pressed=true]').textContent()) === 'C♯5', `맞히면 다음 음 (C5 → ${await page.getByTestId('fg-grid').locator('[aria-pressed=true]').textContent()})`);
+    await page.getByTestId('fg-auto').uncheck();
+    await page.getByTestId('fg-run').selectOption('key');
+    await page.getByTestId('fg-key').selectOption('F');
+    await page.getByTestId('fg-next').click();
+    ok((await page.getByTestId('fg-grid').locator('[aria-pressed=true]').textContent()) === 'D5', `F장조 음계로 다음 음 C♯5 → D5 (${await page.getByTestId('fg-grid').locator('[aria-pressed=true]').textContent()})`);
+    await page.getByTestId('fg-follow').click();
     await page.screenshot({ path: 'scripts/shot-fingering.png', fullPage: true });
     await page.getByTestId('quiz-tab').click();
     ok(await seen(page.getByTestId('quiz-card').locator('svg.mini-staff')), '운지 퀴즈: 오선');
@@ -471,7 +487,7 @@ try {
     ok(/헤드조인트/.test(adv), `조율하기: 헤드조인트 안내 (${adv.slice(0, 30)})`);
     await page.getByTestId('mic').click();
     await tab(page, 'fingering');
-    ok((await page.getByTestId('fg-grid').locator('.chip').count()) === 14, `플룻 1옥타브 C4~C♯5 14음 (${await page.getByTestId('fg-grid').locator('.chip').count()})`);
+    ok((await page.getByTestId('fg-grid').locator('.chip').count()) === 37, `플룻 음 줄 C4~C7 37음 (${await page.getByTestId('fg-grid').locator('.chip').count()})`);
     ok(/YFL-222/.test(await page.locator('.fg-model').textContent()), '운지 기준 YFL-222');
     await page.getByRole('button', { name: '마이크 켜기' }).click();
     await page.waitForTimeout(2500);
@@ -517,8 +533,8 @@ try {
     await page.setViewportSize({ width: 1180, height: 820 });
     await tab(page, 'fingering');
     await page.waitForTimeout(500);
-    const g = await page.getByTestId('fg-grid').boundingBox(), c = await page.getByTestId('fg-card').boundingBox();
-    ok(!!g && !!c && c.x > g.x + g.width - 1, `태블릿: 운지표 음 고르기 왼쪽, 운지 카드 오른쪽 (${Math.round(g?.x ?? 0)} / ${Math.round(c?.x ?? 0)})`);
+    const g = await page.getByTestId('fg-grid').boundingBox(), c = await page.getByTestId('fg-card').boundingBox(), pr = await page.getByTestId('fg-practice').boundingBox();
+    ok(!!g && !!c && !!pr && g.y + g.height <= c.y + 1 && pr.x > c.x + c.width - 1 && Math.abs(pr.y - c.y) < 40, `태블릿: 위에 음 줄, 왼쪽 운지 카드, 오른쪽 불어 보기 (${Math.round(c?.x ?? 0)} / ${Math.round(pr?.x ?? 0)})`);
     await page.screenshot({ path: 'scripts/shot-tablet-fingering.png' });
     await page.getByTestId('quiz-tab').click();
     await page.goBack();
@@ -887,6 +903,42 @@ try {
     await page.waitForTimeout(300);
     ok((await page.getByTestId('bpm').textContent()) === '60', `트레이너 시작 템포 60 (${await page.getByTestId('bpm').textContent()})`);
     await page.getByRole('button', { name: '트레이너 끝내기' }).click().catch(() => {});
+    ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
+    await browser.close();
+  }
+
+  // ── 15. 운지 추천 (새끼손가락 L/R · B♭4 옆키 · RH↓) → 길게 누르면 그 운지로 운지표 ──
+  {
+    const { browser, page, errors } = await launch('bb466.wav');
+    await tab(page, 'score');
+    await page.waitForTimeout(800);
+    await page.getByTestId('score-file').setInputFiles(path.resolve('scripts/test-fing.musicxml'));
+    await page.waitForTimeout(1800);
+    await page.getByTestId('to').fill('2');
+    await page.waitForTimeout(1200);
+    await page.getByTestId('fing-toggle').click();
+    await page.waitForTimeout(600);
+    ok(await seen(page.getByTestId('fing-bar')), '운지 추천 설명 줄');
+    const tags = await page.getByTestId('fing-tag').allTextContents();
+    ok(['L', 'R', '옆키', 'RH↓'].every((l) => tags.includes(l)) && tags.filter((t) => t === 'L' || t === 'R').length === 4, `운지 추천 표시 (${tags.join(' ')})`);
+    await page.getByTestId('fing-tag').first().click();
+    ok(/새끼손가락/.test(await page.getByTestId('fing-why').textContent()), `표시를 누르면 까닭 (${await page.getByTestId('fing-why').textContent()})`);
+    ok(!(await page.getByTestId('here-bar').isVisible().catch(() => false)), '표시를 눌러도 여기부터 막대는 안 뜸');
+    await page.screenshot({ path: 'scripts/shot-fing.png', fullPage: true });
+    // B♭4(옆키) 길게 누르기 → 운지표 다른 운지 1
+    const h = page.locator('[data-testid=osmd] .vf-notehead').nth(5);
+    await h.evaluate((el) => el.scrollIntoView({ block: 'center' })); await page.waitForTimeout(400);
+    const b = await h.boundingBox();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down(); await page.waitForTimeout(650); await page.mouse.up();
+    await page.waitForTimeout(900);
+    ok(/\bon\b/.test(await page.getByTestId('fg-grid').getByRole('button', { name: 'B♭4', exact: true }).getAttribute('class')), '운지표에서 B♭4');
+    ok(/\bon\b/.test(await page.getByTestId('fg-card').getByRole('button', { name: '다른 운지 1' }).getAttribute('class')), '추천한 옆키 운지(다른 운지 1)로 열림');
+    await page.getByTestId('fc-back-score').click();
+    await page.waitForTimeout(1500);
+    await page.setViewportSize({ width: 1180, height: 820 });
+    await page.waitForTimeout(1500);
+    ok((await page.getByTestId('fing-tag').count()) === tags.length, '태블릿 크기에서도 표시 그대로');
+    await page.screenshot({ path: 'scripts/shot-fing-tablet.png' });
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
     await browser.close();
   }

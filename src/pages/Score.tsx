@@ -1,3 +1,4 @@
+import { adviseFingering, FING_LEGEND } from '../score/fingerAdvice';
 import { withSolfa, type SolfaMode } from '../score/solfa';
 import { LITE } from '../state/lite';
 import { useToday } from '../state/useToday';
@@ -498,6 +499,31 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
     }
     setAccPos(out);
   }, [hlOn, accSkip, expected, renderTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 운지 추천: 새끼손가락 L/R, B♭4 옆키, 엄지 B♭ … (악기마다 따로 켜고 끄기)
+  const fingKey = `clarinet-fing-advice-${P.id}`;
+  const [fingOn, setFingOn] = useState(() => { try { return localStorage.getItem(fingKey) === '1'; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem(fingKey, fingOn ? '1' : '0'); } catch { /* 무시 */ } }, [fingOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fingAdvice = useMemo(() => adviseFingering(parsed, P.id, P.fingerings), [parsed]);
+  const [fingWhy, setFingWhy] = useState<string | null>(null);
+  const [fingPos, setFingPos] = useState<{ key: string; x: number; y: number; label: string; why: string; hand: string }[]>([]);
+  useEffect(() => {
+    const wrap = sheetWrap.current;
+    if (!wrap || !fingOn) { setFingPos([]); return; }
+    const base = wrap.getBoundingClientRect();
+    const out: typeof fingPos = [];
+    for (const n of expected) {
+      const key = `${n.measure}:${n.index}`;
+      const a = fingAdvice.get(key);
+      if (!a) continue;
+      const head = noteRect(key);
+      if (!head) continue;
+      const id = (els.current.get(key) ?? [])[0];
+      const g = id ? (document.getElementById(id) ?? document.getElementById(`vf-${id}`))?.getBoundingClientRect() : undefined;
+      const top = Math.min(head.top, g?.top ?? head.top);
+      out.push({ key, x: (head.left + head.right) / 2 - base.left, y: top - base.top - 2, label: a.label, why: a.why, hand: a.label === 'L' ? 'l' : a.label === 'R' ? 'r' : 'o' });
+    }
+    setFingPos(out);
+  }, [fingOn, fingAdvice, expected, renderTick]); // eslint-disable-line react-hooks/exhaustive-deps
   // 레슨 노트가 붙은 마디: 첫 음 왼쪽 위에 📝
   const [lessonPos, setLessonPos] = useState<{ m: number; x: number; top: number; n: number }[]>([]);
   useEffect(() => {
@@ -582,7 +608,9 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
     setHereKey(null);
     try { localStorage.setItem(LP_HINT_KEY, String(LP_HINT_TIMES)); } catch { /* 무시 */ }
     setLpHint(false);
-    requestFingering({ midi: n.midi, back: { scoreId: score.id!, title: score.title, measure: n.measure, from, to } });
+    // 운지 추천이 켜져 있으면 추천한 운지로 열기
+    const adv = fingOn ? fingAdvice.get(key) : undefined;
+    requestFingering({ midi: n.midi, ...(adv && adv.alt > 0 ? { alt: adv.alt } : {}), back: { scoreId: score.id!, title: score.title, measure: n.measure, from, to } });
   }
   /** 음 고치기 적용 (처음 고칠 때 원래 악보를 따로 둠) */
   async function applyEdit(key: string, op: EditOp) {
@@ -1156,6 +1184,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
         <span className="zoom">
           <button className={`mini ${tool === 'edit' ? 'on' : ''}`} onClick={() => { setTool(tool === 'edit' ? 'none' : 'edit'); setEditKey(null); setHereKey(null); }} disabled={listening || keyShift !== 0} data-testid="edit-toggle" title="틀린 음을 눌러 높이·길이 고치기">♪ 음 고치기</button>
           <button className={`mini ${solfaOn ? 'on' : ''}`} onClick={() => setSolfaOn(!solfaOn)} data-testid="solfa-toggle" title="음표 아래에 계이름">계이름</button>
+          <button className={`mini ${fingOn ? 'on' : ''}`} onClick={() => { setFingOn(!fingOn); setFingWhy(null); }} data-testid="fing-toggle" title={P.id === 'flute' ? '엄지 B♭·F♯ 중지 같은 운지 추천' : '새끼손가락 L/R·B♭4 옆키 같은 운지 추천'}>운지 추천</button>
           <button className={`mini ${hlOn ? 'on' : ''}`} onClick={() => setHlOn(!hlOn)} data-testid="acc-toggle" title="조표·임시표로 바뀐 음(♯·♭)에 형광펜">♯♭ 표시</button>
           <button className={`mini ${focus ? 'on' : ''}`} onClick={() => setFocus(!focus)} data-testid="focus-toggle">{focus ? '메뉴 보기' : '악보만'}</button>
           <button className="mini" onClick={() => setZoom((z) => Math.max(0.5, Math.round((z - 0.1) * 10) / 10))} aria-label="악보 작게">가−</button>
@@ -1163,6 +1192,13 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
           <button className="mini" onClick={() => setZoom((z) => Math.min(2, Math.round((z + 0.1) * 10) / 10))} aria-label="악보 크게">가+</button>
         </span>
       </div>
+      {fingOn && (
+        <div className="acc-bar fing-bar" data-testid="fing-bar">
+          <span className="muted small">운지 추천</span>
+          {FING_LEGEND[P.id].map((l) => <span key={l.label} className="small fing-legend"><span className={`fing-tag static ${l.label === 'L' ? 'l' : l.label === 'R' ? 'r' : 'o'}`}>{l.label}</span> {l.text}</span>)}
+          <span className="muted small" data-testid="fing-why">{fingWhy ?? (fingPos.length ? '표시를 누르면 까닭이 나와요. 음표를 길게 누르면 그 운지로 운지표가 열려요.' : '이 구간에는 따로 추천할 운지가 없어요 (기본 운지로).')}</span>
+        </div>
+      )}
       {solfaOn && (
         <div className="acc-bar" data-testid="solfa-bar">
           <span className="muted small">계이름{P.id === 'clarinet' ? ' (악보음)' : ''}</span>
@@ -1204,6 +1240,10 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
           <div className="mark-layer" aria-hidden>
             {pressAt && <span className="lp-ring" style={{ left: pressAt.x, top: pressAt.y, width: pressAt.r * 2, height: pressAt.r * 2, animationDuration: `${LP_MS - LP_SHOW_MS}ms` }} data-testid="longpress-ring" />}
             {accPos.map(({ key, x, y, w, h }) => <span key={`a${key}`} className="acc-hl" style={{ left: x, top: y, width: w, height: h }} data-testid="acc-hl" />)}
+            {fingPos.map(({ key, x, y, label, why, hand }) => (
+              <span key={`f${key}`} className={`fing-tag ${hand}`} style={{ left: x, top: y }} title={why} data-testid="fing-tag" data-key={key}
+                onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setFingWhy(why); }}>{label}</span>
+            ))}
             {devPos.map(({ key, x, y, up, label, color }) => (
               <span key={`d${key}`} className={`dev-tag ${up ? 'up' : 'down'}`} style={{ left: x, top: y, color }} data-testid="dev-tag">{up ? '▲' : '▼'}{label}</span>
             ))}

@@ -57,7 +57,7 @@ const f = (keys: KeyId[], note?: string): Fingering => ({ keys, note });
 const CHALUMEAU: { midi: number; main: Fingering; alts: Fingering[]; tip?: string }[] = [
   { midi: 52, main: f([...LOW, 'lEB']), alts: [f([...LOW, 'rEB'], '오른손 새끼로')], tip: '가장 낮은 음. 모든 구멍을 손가락 바닥(지문 부분)으로 빈틈없이 막아야 나요.' },
   { midi: 53, main: f([...LOW, 'rFC']), alts: [f([...LOW, 'lFC'], '왼손 새끼로')] },
-  { midi: 54, main: f([...LOW, 'lFs']), alts: [f([...LOW, 'rFs'], '오른손 새끼로')] },
+  { midi: 54, main: f([...LOW, 'lFs']), alts: [], tip: 'F♯/C♯ 키는 왼손 새끼에만 있어요 (오른손 새끼는 E/B·F/C·A♭/E♭).' },
   { midi: 55, main: f([...LOW]), alts: [], tip: '엄지와 여섯 손가락을 모두 막아요. 새끼손가락 키는 누르지 않아요.' },
   { midi: 56, main: f([...LOW, 'rAb']), alts: [] },
   { midi: 57, main: f([...LH, 'r1', 'r2']), alts: [] },
