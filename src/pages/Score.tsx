@@ -1,5 +1,6 @@
 import { adviseFingering, FING_LEGEND } from '../score/fingerAdvice';
 import { withSolfa, type SolfaMode } from '../score/solfa';
+import { planBreaths, breathFromLongTones, GapDetector, gapsToAfterKeys, checkBreaths, type BreathCheck } from '../score/breath';
 import { LITE } from '../state/lite';
 import { useToday } from '../state/useToday';
 import { P } from '../instruments/profiles';
@@ -543,6 +544,79 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
     }
     setFingPos(out);
   }, [fingOn, fingAdvice, expected, renderTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 숨 쉬는 곳: 추천 (숨 한 번 길이는 롱톤 기록 또는 직접), 내가 고친 곳은 악보마다·파트마다 저장
+  const brKey = `clarinet-breath-${P.id}`, brSecKey = `clarinet-breath-sec-${P.id}`;
+  const [breathOn, setBreathOn] = useState(() => { try { return localStorage.getItem(brKey) === '1'; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem(brKey, breathOn ? '1' : '0'); } catch { /* 무시 */ } }, [breathOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [breathSecManual, setBreathSecManual] = useState<number | null>(() => { try { const v = Number(localStorage.getItem(brSecKey)); return v > 0 ? v : null; } catch { return null; } });
+  useEffect(() => { try { if (breathSecManual) localStorage.setItem(brSecKey, String(breathSecManual)); else localStorage.removeItem(brSecKey); } catch { /* 무시 */ } }, [breathSecManual]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [longDurs, setLongDurs] = useState<number[]>([]);
+  useEffect(() => {
+    if (!breathOn) return;
+    const since = Date.now() - 60 * 864e5;
+    db.toneRuns.where('kind').equals('long').toArray().then((rs) => setLongDurs(rs.filter((r) => r.createdAt >= since && r.durationSec).map((r) => r.durationSec!))).catch(() => {});
+  }, [breathOn]);
+  const breathAuto = useMemo(() => breathFromLongTones(longDurs, P.id), [longDurs]);
+  const breathSec = breathSecManual ?? breathAuto.sec;
+  const brEdits = score.breaths?.[String(myPart)] ?? { add: [], del: [] };
+  const breathPlan = useMemo(() => planBreaths(parsed, { bpm: playBpm, capSec: breathSec, add: brEdits.add, del: brEdits.del }), [parsed, playBpm, breathSec, score.breaths, myPart]); // eslint-disable-line react-hooks/exhaustive-deps
+  const breathRef = useRef({ on: false, plan: breathPlan });
+  breathRef.current = { on: breathOn, plan: breathPlan };
+  const [breathEdit, setBreathEdit] = useState(false);
+  const [breathWhy, setBreathWhy] = useState<string | null>(null);
+  const [breathCheck, setBreathCheck] = useState<BreathCheck | null>(null);
+  const gapRef = useRef<GapDetector | null>(null);
+  const [breathPos, setBreathPos] = useState<{ key: string; x: number; y: number; kind: 'big' | 'short'; src: string; why: string; state: '' | 'hit' | 'off' }[]>([]);
+  useEffect(() => {
+    const wrap = sheetWrap.current;
+    if (!wrap || !breathOn) { setBreathPos([]); return; }
+    const base = wrap.getBoundingClientRect();
+    const keys = expected.map((n) => `${n.measure}:${n.index}`);
+    const hit = new Set(breathCheck?.hit ?? []);
+    const out: typeof breathPos = [];
+    const place = (key: string, kind: 'big' | 'short', src: string, why: string, state: '' | 'hit' | 'off') => {
+      const i = keys.indexOf(key);
+      const a = i >= 0 ? noteRect(key) : null;
+      if (!a) return;
+      const b = i + 1 < keys.length ? noteRect(keys[i + 1]) : null;
+      const cy = (a.top + a.bottom) / 2;
+      const sameRow = !!b && Math.abs((b.top + b.bottom) / 2 - cy) < 70 && b.left > a.right;
+      const x = sameRow ? (a.right + b!.left) / 2 : a.right + 10;
+      // 오선 맨 윗줄 바로 위 (음표가 더 높으면 음표 위)
+      const id = (els.current.get(key) ?? [])[0];
+      const g = id ? document.getElementById(id) ?? document.getElementById(`vf-${id}`) : null;
+      const line = g?.closest('.vf-measure')?.querySelector(':scope > path')?.getBoundingClientRect();
+      const top = Math.min(line && line.width ? line.top : a.top, a.top, sameRow ? b!.top : a.top);
+      out.push({ key, x: x - base.left, y: top - base.top - 3, kind, src, why, state });
+    };
+    for (const m of breathPlan.marks) place(m.after, m.kind, m.src, `${m.measure}마디: ${m.why}`, hit.has(m.after) ? 'hit' : '');
+    for (const o of breathCheck?.off ?? []) place(o.after, 'big', 'auto', `${o.measure}마디: 추천에 없는 곳에서 소리가 끊겼어요${o.slur ? ' (이음줄 중간)' : ''}`, 'off');
+    setBreathPos(out);
+  }, [breathOn, breathPlan, breathCheck, expected, renderTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function toggleBreath(key: string) {
+    const shown = breathPlan.marks.find((m) => m.after === key);
+    const add = new Set(brEdits.add), del = new Set(brEdits.del);
+    const m = key.split(':')[0];
+    if (shown) { add.delete(key); if (shown.src !== 'mine') del.add(key); setBreathWhy(`${m}마디: 숨 자리를 뺐어요.`); }
+    else { del.delete(key); add.add(key); setBreathWhy(`${m}마디: 숨 자리를 넣었어요.`); }
+    await db.scores.update(score.id!, { breaths: { ...(score.breaths ?? {}), [String(myPart)]: { add: [...add], del: [...del] } } });
+  }
+  async function resetBreaths() {
+    const rest = { ...(score.breaths ?? {}) };
+    delete rest[String(myPart)];
+    setBreathWhy('추천대로 되돌렸어요.');
+    await db.scores.update(score.id!, { breaths: Object.keys(rest).length ? rest : undefined });
+  }
+  /** 연주·따라가기 중 숨 자리 직전이면 그 표시를 깜빡 */
+  const soonEl = useRef<Element | null>(null);
+  function breathSoon(key: string | null) {
+    soonEl.current?.classList.remove('soon');
+    soonEl.current = null;
+    const b = key && breathRef.current.on ? breathRef.current.plan.alert.get(key) : undefined;
+    if (!b) return;
+    const el = sheetWrap.current?.querySelector(`[data-breath="${b}"]`);
+    if (el) { el.classList.add('soon'); soonEl.current = el; }
+  }
   // 레슨 노트가 붙은 마디: 첫 음 왼쪽 위에 📝
   const [lessonPos, setLessonPos] = useState<{ m: number; x: number; top: number; n: number }[]>([]);
   useEffect(() => {
@@ -577,6 +651,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
   function onSheetTap(clientX: number, clientY: number) {
     if (listening || playing) return;
     const k = pickNote(clientX, clientY);
+    if (breathOn && breathEdit) { if (k) void toggleBreath(k); return; }
     if (tool === 'edit') { if (k) { setEditMsg(''); setEditKey(k); } return; }
     setHereKey(k);
   }
@@ -686,7 +761,10 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
     const seg = new NoteSegmenter(equalRef(settings.a4));
     segRef.current = seg;
     dbTrack.current = [];
+    const gaps = new GapDetector();
+    gapRef.current = gaps;
     const unsub = pitchTracker.subscribe((r) => {
+      if (r.db !== -Infinity) gaps.push(r.time, r.raw !== null || r.db > settings.minDb + 6); // 클릭 근처 프레임은 빼고. 음이 잠깐 안 잡혀도 소리가 크면 이어진 것으로
       if (r.freq !== null && Number.isFinite(r.db)) dbTrack.current.push([r.time, r.db]);
       const n = seg.push(r.time, r.freq);
       if (n) { played.current.push({ midi: n.midi, cents: n.settledCents ?? n.meanCents, start: n.start, db: meanDb(dbTrack.current, n.start + 0.05, n.end) }); tick((x) => x + 1); }
@@ -718,6 +796,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
 
   function highlight(key: string | null, scroll = true) {
     litKey.current = key;
+    breathSoon(key);
     lit.current.forEach((g) => g.classList.remove('now-note'));
     const ids = key ? els.current.get(key) ?? [] : [];
     lit.current = ids.map((id) => document.getElementById(id) ?? document.getElementById(`vf-${id}`)).filter((x): x is HTMLElement & SVGGElement => !!x) as unknown as SVGGElement[];
@@ -838,6 +917,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
     setEditKey(null);
     setLadderMsg(null);
     setReviewMsg(null);
+    setBreathCheck(null);
     played.current = [];
     if (!pitchTracker.running) await pitch.start();
     if (!pitchTracker.running) return; // 마이크를 못 열면 시작하지 않음 (오류 문구는 pitch.error)
@@ -875,6 +955,9 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
     const durationSec = (Date.now() - runStart.current) / 1000;
     const r = alignNotes(ctx.expected, played.current);
     setResult(r);
+    // 숨: 소리가 끊긴 곳과 추천 비교
+    setBreathCheck(breathRef.current.on && r.some((x) => x.status !== 'missed') ? checkBreaths(breathRef.current.plan, r, gapsToAfterKeys(r, gapRef.current?.gaps ?? [])) : null);
+    gapRef.current = null;
     const sm = summarizeScore(r);
     // 연습곡 진도는 먼저 (저장 공간 문제로 녹음 저장이 실패해도 남도록)
     if (ex && ctx.from <= firstNoteMeasure && ctx.to >= last && r.length) {
@@ -1201,9 +1284,10 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
       <div className="sheet-bar">
         <span className="muted small">{from}~{to}마디{nowMeasure !== null ? ` · 지금 ${nowMeasure}마디` : ''}</span>
         <span className="zoom">
-          <button className={`mini ${tool === 'edit' ? 'on' : ''}`} onClick={() => { setTool(tool === 'edit' ? 'none' : 'edit'); setEditKey(null); setHereKey(null); }} disabled={listening || keyShift !== 0} data-testid="edit-toggle" title="틀린 음을 눌러 높이·길이 고치기">♪ 음 고치기</button>
+          <button className={`mini ${tool === 'edit' ? 'on' : ''}`} onClick={() => { setTool(tool === 'edit' ? 'none' : 'edit'); setEditKey(null); setHereKey(null); setBreathEdit(false); }} disabled={listening || keyShift !== 0} data-testid="edit-toggle" title="틀린 음을 눌러 높이·길이 고치기">♪ 음 고치기</button>
           <button className={`mini ${solfaOn ? 'on' : ''}`} onClick={() => setSolfaOn(!solfaOn)} data-testid="solfa-toggle" title="음표 아래에 계이름">계이름</button>
           <button className={`mini ${fingOn ? 'on' : ''}`} onClick={() => { setFingOn(!fingOn); setFingWhy(null); }} data-testid="fing-toggle" title={P.id === 'flute' ? '엄지 B♭·F♯ 중지 같은 운지 추천' : '새끼손가락 L/R·B♭4 옆키 같은 운지 추천'}>운지 추천</button>
+          <button className={`mini ${breathOn ? 'on' : ''}`} onClick={() => { setBreathOn(!breathOn); setBreathWhy(null); setBreathEdit(false); }} data-testid="breath-toggle" title="숨 쉬는 곳 추천 (V 큰 숨, ’ 짧은 숨)">숨</button>
           <button className={`mini ${hlOn ? 'on' : ''}`} onClick={() => setHlOn(!hlOn)} data-testid="acc-toggle" title="조표·임시표로 바뀐 음(♯·♭)에 형광펜">♯♭ 표시</button>
           <button className={`mini ${focus ? 'on' : ''}`} onClick={() => setFocus(!focus)} data-testid="focus-toggle">{focus ? '메뉴 보기' : '악보만'}</button>
           <button className="mini" onClick={() => setZoom((z) => Math.max(0.5, Math.round((z - 0.1) * 10) / 10))} aria-label="악보 작게">가−</button>
@@ -1216,6 +1300,23 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
           <span className="muted small">운지 추천</span>
           {FING_LEGEND[P.id].map((l) => <span key={l.label} className="small fing-legend"><span className={`fing-tag static ${l.label === 'L' ? 'l' : l.label === 'R' ? 'r' : 'o'}`}>{l.label}</span> {l.text}</span>)}
           <span className="muted small" data-testid="fing-why">{fingWhy ?? (fingPos.length ? '표시를 누르면 까닭이 나와요. 음표를 길게 누르면 그 운지로 운지표가 열려요.' : '이 구간에는 따로 추천할 운지가 없어요 (기본 운지로).')}</span>
+        </div>
+      )}
+      {breathOn && (
+        <div className="acc-bar breath-bar" data-testid="breath-bar">
+          <span className="muted small">숨 쉬는 곳</span>
+          <span className="small fing-legend"><span className="breath-tag static big">V</span> 큰 숨 <span className="breath-tag static short">’</span> 짧은 숨 (앞 음 살짝 줄이기)</span>
+          <span className="small fing-legend">숨 한 번
+            <button className="mini" onClick={() => setBreathSecManual(Math.max(2, breathSec - 0.5))} aria-label="숨 짧게" data-testid="breath-minus">−</button>
+            <b data-testid="breath-sec">{breathSec}초</b>
+            <button className="mini" onClick={() => setBreathSecManual(Math.min(30, breathSec + 0.5))} aria-label="숨 길게" data-testid="breath-plus">+</button>
+            {breathSecManual !== null
+              ? <button className="link small" onClick={() => setBreathSecManual(null)} data-testid="breath-auto">{breathAuto.auto ? `롱톤 기록대로 (${breathAuto.sec}초)` : `기본값으로 (${breathAuto.sec}초)`}</button>
+              : <span className="muted small">{breathAuto.auto ? `롱톤 기록 ${breathAuto.n}번 기준` : '기본값 — 롱톤을 3번 이상 하면 내 숨에 맞춰요'}</span>}
+          </span>
+          <button className={`chip acc-chip ${breathEdit ? 'on' : ''}`} onClick={() => { setBreathEdit(!breathEdit); setTool('none'); setEditKey(null); setHereKey(null); setBreathWhy(null); }} data-testid="breath-edit">숨 자리 고치기</button>
+          {brEdits.add.length + brEdits.del.length > 0 && <button className="link small" onClick={() => void resetBreaths()} data-testid="breath-reset">추천대로 되돌리기</button>}
+          <span className="muted small" data-testid="breath-why">{breathWhy ?? (breathEdit ? '음표를 누르면 그 음 다음에 숨 자리를 넣거나 빼요. 뺀 곳 대신 앱이 가까운 다른 곳을 고를 수 있어요.' : breathPlan.marks.length ? `♩=${playBpm} 기준, 숨 한 번에 가장 길게 ${breathPlan.longestSec}초. 표시를 누르면 까닭이 나와요. 연주·따라가기 때는 숨 쉬기 직전에 깜빡여요.` : `♩=${playBpm}면 숨 한 번에 다 불 수 있어요.`)}</span>
         </div>
       )}
       {solfaOn && (
@@ -1248,7 +1349,8 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
             {score.origXml && <button className="link small" onClick={revertAll} data-testid="edit-revert-all"> 원래 악보로 되돌리기</button>}</p>
         )}
         {/* 같은 자리에: 처음 몇 번은 길게 누르기 안내, 그다음은 누른 음부터 듣기·채점 안내 */}
-        {tool === 'none' && !listening && !playing && (lpHint
+        {breathOn && breathEdit && <p className="small tap-hint edit-hint" data-testid="breath-edit-hint">숨 자리를 넣거나 뺄 음표를 누르세요 (그 음 다음에 숨).</p>}
+        {tool === 'none' && !(breathOn && breathEdit) && !listening && !playing && (lpHint
           ? <p className="muted small tap-hint" data-testid="longpress-hint">음표를 길게 누르면 운지표에서 그 음의 운지를 볼 수 있어요.</p>
           : <p className="muted small tap-hint">음표를 누르면 그 마디부터, 길게 누르면 운지표로.</p>)}
         <div ref={sheetWrap} className={`sheet-wrap ${tool !== 'none' ? 'marking' : ''}`}
@@ -1262,6 +1364,10 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
             {fingPos.map(({ key, x, y, label, why, hand }) => (
               <span key={`f${key}`} className={`fing-tag ${hand}`} style={{ left: x, top: y }} title={why} data-testid="fing-tag" data-key={key}
                 onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setFingWhy(why); }}>{label}</span>
+            ))}
+            {breathPos.map(({ key, x, y, kind, src, why, state }) => (
+              <span key={`b${key}${state}`} className={`breath-tag ${kind} ${src} ${state}`} style={{ left: x, top: y }} title={why} data-breath={state === 'off' ? undefined : key} data-testid="breath-tag" data-key={key} data-state={state} data-kind={kind}
+                onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); if (breathEdit && !listening) void toggleBreath(key); else setBreathWhy(why); }}>{kind === 'big' ? 'V' : '’'}</span>
             ))}
             {devPos.map(({ key, x, y, up, label, color }) => (
               <span key={`d${key}`} className={`dev-tag ${up ? 'up' : 'down'}`} style={{ left: x, top: y, color }} data-testid="dev-tag">{up ? '▲' : '▼'}{label}</span>
@@ -1307,6 +1413,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
           {passMsg && <p className="good"><b>✓ {passMsg}</b></p>}
           {ladderMsg && <p className={ladderMsg.pass ? 'good' : 'warn'} data-testid="ladder-msg"><b>{ladderMsg.pass ? '▲ ' : ''}{ladderMsg.text}</b></p>}
           {reviewMsg && <p className="small" data-testid="review-msg"><b>복습함</b> {reviewMsg}</p>}
+          {breathCheck?.msg && <p className="small" data-testid="breath-msg"><b>숨</b> {breathCheck.msg}</p>}
           {saved && <p className="small muted" data-testid="run-saved">✓ {saved}</p>}
           {shiftRes.length > 0 && (
             <p className="small" data-testid="shift-stats">

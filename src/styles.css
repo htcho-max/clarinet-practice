@@ -592,3 +592,15 @@ html.lite .acc-hl { mix-blend-mode: normal; background: rgba(250, 204, 21, 0.35)
 .fing-tag.static { position: static; transform: none; display: inline-block; pointer-events: none; }
 .fing-legend { display: inline-flex; align-items: center; gap: 3px; }
 .fing-bar [data-testid=fing-why] { flex-basis: 100%; }
+/* 숨 쉬는 곳 */
+.breath-tag { position: absolute; transform: translate(-50%, -100%); font: 700 15px/1 Georgia, 'Times New Roman', serif; color: #0e7490; padding: 0 3px;
+  pointer-events: auto; cursor: pointer; text-shadow: 0 0 2px var(--surface); }
+.breath-tag.short { font-size: 20px; }
+.breath-tag.mine { color: #7c3aed; }
+.breath-tag.score { color: var(--text); }
+.breath-tag.hit { color: #16a34a; }
+.breath-tag.off { color: #dc2626; }
+.breath-tag.soon { animation: breath-soon 0.45s ease-in-out infinite alternate; }
+@keyframes breath-soon { from { transform: translate(-50%, -100%) scale(1); } to { transform: translate(-50%, -100%) scale(1.7); color: #f59e0b; } }
+.breath-tag.static { position: static; transform: none; display: inline-block; pointer-events: none; }
+.breath-bar [data-testid=breath-why] { flex-basis: 100%; }

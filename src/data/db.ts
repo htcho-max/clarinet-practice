@@ -193,6 +193,8 @@ export interface ScoreFile {
   origXml?: string;
   /** 조 바꾸기 (반음, 원래 악보는 그대로 두고 보여줄 때만 옮김) */
   keyShift?: number;
+  /** 숨 자리 고친 것: 파트 번호 → 넣은 곳·뺀 곳 (그 음 다음에 숨, 음 열쇠) */
+  breaths?: Record<string, { add: string[]; del: string[] }>;
   /** 목록용 가벼운 열쇠 (자동으로 채움): 악보 XML 을 읽지 않고 목록을 그리려고 인덱스에 넣음 */
   listKey?: ScoreListKey;
 }

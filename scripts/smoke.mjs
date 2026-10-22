@@ -961,6 +961,64 @@ try {
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
     await browser.close();
   }
+  // ── 17. 숨 쉬는 곳 추천 · 숨 길이 · 숨 자리 고치기 · 연주 중 미리 알림 ──
+  {
+    const { browser, page, errors } = await launch('bb466.wav');
+    await tab(page, 'score');
+    await page.waitForTimeout(800);
+    await page.getByTestId('score-file').setInputFiles(path.resolve('scripts/test-breath.musicxml'));
+    await page.waitForTimeout(1800);
+    await page.getByTestId('to').fill('8');
+    await page.waitForTimeout(1200);
+    await page.getByTestId('breath-toggle').click();
+    await page.waitForTimeout(800);
+    ok(await seen(page.getByTestId('breath-bar')), '숨 설명 줄');
+    ok(/8초/.test(await page.getByTestId('breath-sec').textContent()), `클라리넷 기본 숨 길이 (${await page.getByTestId('breath-sec').textContent()})`);
+    const n0 = await page.getByTestId('breath-tag').count();
+    ok(n0 >= 2, `숨 표시 (${n0}개)`);
+    const kinds = await page.getByTestId('breath-tag').evaluateAll((els) => els.map((e) => `${e.dataset.key}${e.dataset.kind === 'big' ? 'V' : "'"}`));
+    console.log('  숨 자리:', kinds.join(' '));
+    await page.getByTestId('breath-tag').first().click();
+    ok(/마디/.test(await page.getByTestId('breath-why').textContent()), `표시를 누르면 까닭 (${await page.getByTestId('breath-why').textContent()})`);
+    ok(!(await page.getByTestId('here-bar').isVisible().catch(() => false)), '숨 표시를 눌러도 여기부터 막대는 안 뜸');
+    // 숨 길이 바꾸기 → 기록대로
+    await page.getByTestId('breath-minus').click(); await page.getByTestId('breath-minus').click(); await page.getByTestId('breath-minus').click(); await page.getByTestId('breath-minus').click();
+    await page.waitForTimeout(500);
+    ok(/6초/.test(await page.getByTestId('breath-sec').textContent()), '숨 길이 줄이기');
+    const n1 = await page.getByTestId('breath-tag').count();
+    ok(n1 >= n0, `숨이 짧으면 더 자주 (${n0} → ${n1})`);
+    await page.getByTestId('breath-auto').click();
+    await page.waitForTimeout(500);
+    ok(/8초/.test(await page.getByTestId('breath-sec').textContent()) && (await page.getByTestId('breath-tag').count()) === n0, '기본값으로 되돌리기');
+    // 숨 자리 고치기: 첫 음 다음에 넣기 → 저장 → 되돌리기
+    await page.getByTestId('breath-edit').click();
+    ok(await seen(page.getByTestId('breath-edit-hint')), '숨 자리 고치기 안내');
+    const h = page.locator('[data-testid=osmd] .vf-notehead').first();
+    await h.evaluate((el) => el.scrollIntoView({ block: 'center' })); await page.waitForTimeout(300);
+    const bb = await h.boundingBox();
+    await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2);
+    await page.waitForTimeout(1200);
+    ok((await page.locator('[data-testid=breath-tag][data-key="1:0"]').count()) === 1, '첫 음 다음에 숨 넣기');
+    ok(/mine/.test(await page.locator('[data-testid=breath-tag][data-key="1:0"]').getAttribute('class')), '내가 넣은 숨은 보라색');
+    ok(await seen(page.getByTestId('breath-reset')), '추천대로 되돌리기 보임');
+    await page.locator('[data-testid=breath-tag][data-key="1:0"]').click();
+    await page.waitForTimeout(1000);
+    ok((await page.locator('[data-testid=breath-tag][data-key="1:0"]').count()) === 0, '표시를 누르면 다시 빼기');
+    await page.getByTestId('breath-reset').click().catch(() => {});
+    await page.waitForTimeout(800);
+    await page.getByTestId('breath-edit').click();
+    await page.screenshot({ path: 'scripts/shot-breath.png', fullPage: true });
+    // 듣기: 숨 쉬기 직전에 깜빡
+    await page.getByTestId('play-bpm').fill('200');
+    await page.waitForTimeout(400);
+    await page.getByTestId('play-toggle').click();
+    let soon = false;
+    for (let i = 0; i < 100 && !soon; i++) { await page.waitForTimeout(150); soon = (await page.locator('.breath-tag.soon').count()) > 0; }
+    ok(soon, '듣는 동안 숨 자리 직전에 깜빡');
+    await page.getByTestId('play-toggle').click().catch(() => {});
+    ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
+    await browser.close();
+  }
 } catch (e) {
   console.log('FAIL 예외', e.message.split('\n')[0]);
   process.exitCode = 1;

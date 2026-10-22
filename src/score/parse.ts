@@ -5,6 +5,8 @@ export interface Art {
   accent?: boolean;
   tenuto?: boolean;
   fermata?: boolean;
+  /** 이 음 다음에 숨표(쉼표 모양 ' 또는 V, caesura //) */
+  breath?: boolean;
   slurNext?: boolean;
   /** 이 음부터의 셈여림 (pp p mp mf f ff …) */
   dyn?: string;
@@ -141,6 +143,7 @@ function parseDoc(doc: Document, opt: ParseOptions): ParsedScore {
     if (has('accent') || has('strong-accent')) a.accent = true;
     if (has('tenuto') || has('detached-legato')) a.tenuto = true;
     if (has('fermata')) a.fermata = true;
+    if (has('breath-mark') || has('caesura')) a.breath = true;
     const slurs = Array.from(el.getElementsByTagName('slur')).map((x) => x.getAttribute('type'));
     if (slurs.includes('stop')) slurOpen = false;
     if (slurs.includes('start')) slurOpen = true;
