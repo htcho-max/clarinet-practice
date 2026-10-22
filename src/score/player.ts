@@ -4,7 +4,8 @@ import { resumeAudio } from '../audio/context';
 import { waveFor } from '../audio/timbre';
 import { midiToFreq, getTranspose } from '../audio/notes';
 import type { ParsedScore, ScoreNote } from './parse';
-import { loadSamples, scheduleSampleNote } from '../audio/sampler';
+import { loadSamples, scheduleSampleNote, reverbIR } from '../audio/sampler';
+import { reverbLevel } from '../audio/soundPrefs';
 import { noteClick, clearClicks } from '../audio/clicks';
 import { outputLatency } from '../audio/latency';
 
@@ -14,7 +15,7 @@ export type Voice = 'sample' | 'synth';
  * time·dur 는 초. shift: 악보 midi 에 더할 반음 수 (실음으로).
  * 표현 살리기: len = 실제로 소리 내는 길이(초), gain = 셈여림, legatoIn = 앞 음에서 이음줄로 이어짐(혀로 끊지 않음), accent = 강세
  */
-export interface PlayEvent { note: ScoreNote; time: number; dur: number; inst?: 'clarinet' | 'piano'; shift?: number; len?: number; gain?: number; legatoIn?: boolean; accent?: boolean }
+export interface PlayEvent { note: ScoreNote; time: number; dur: number; inst?: 'clarinet' | 'piano'; shift?: number; len?: number; gain?: number; legatoIn?: boolean; accent?: boolean; /** 크레셴도·디미누엔도: 음 끝 무렵 셈여림 (다음 음 크기) */ gainEnd?: number }
 /** 반주 파트 (parse 를 allNotes 로 읽은 것) */
 export interface AccPart { score: ParsedScore; inst: 'clarinet' | 'piano' }
 export type Plan = { events: PlayEvent[]; clicks: { time: number; accent: boolean }[]; total: number; acc: PlayEvent[] };
@@ -143,6 +144,9 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
             : L - Math.min(0.08, L * 0.18);
       e.gain = ex[inRange[k].i].gain;
       e.accent = ex[inRange[k].i].accent;
+      // 쐐기 안에서 이어지는 음: 그 음 안에서도 다음 음 크기로 조금씩
+      const ng = next ? ex[inRange[k + 1].i].gain : undefined;
+      if (next && joined && ng !== undefined && Math.abs(ng - e.gain) > 0.005 && Math.abs(ng - e.gain) <= 0.25 && !next.note.art?.dyn) e.gainEnd = ng;
       if (slur && next) next.legatoIn = true;
     });
   }
@@ -216,7 +220,7 @@ export class ScorePlayer {
 
   async play(
     plan: Plan,
-    opts: { a4: number; /** true = 소리, 'visual' = 소리 없이 박 깜빡임만 (onBeat), false = 카운트인만 */ click: boolean | 'visual'; onBeat?: (k: number, accent: boolean) => void; volume?: number; voice?: Voice; onNote?: (e: PlayEvent | null, idx?: number) => void; onEnd?: () => void; mute?: boolean; accVolume?: number },
+    opts: { a4: number; /** true = 소리, 'visual' = 소리 없이 박 깜빡임만 (onBeat), false = 카운트인만 */ click: boolean | 'visual'; onBeat?: (k: number, accent: boolean) => void; volume?: number; voice?: Voice; onNote?: (e: PlayEvent | null, idx?: number) => void; onEnd?: () => void; mute?: boolean; accVolume?: number; /** 울림(리버브). 설정을 따르되 false 면 끔 (듣고 따라 불기처럼 바로 마이크로 들을 때) */ reverb?: boolean },
   ) {
     this.stop();
     const gen = this.gen;
@@ -224,7 +228,7 @@ export class ScorePlayer {
     if (gen !== this.gen) return;
     this.ctx = ctx;
     // 실제 악기 샘플 (못 불러오면 합성음으로)
-    const useSample = (opts.voice ?? 'sample') === 'sample' && (await loadSamples(ctx));
+    const useSample = (opts.voice ?? 'sample') === 'sample' && (await loadSamples(ctx, opts.mute ? [] : plan.events.map((e) => e.gain ?? 0.7)));
     if (gen !== this.gen) return;
     this.playing = true;
     markBusy('play');
@@ -237,6 +241,15 @@ export class ScorePlayer {
     lp.type = 'lowpass';
     lp.frequency.value = 3500;
     lp.connect(master).connect(ctx.destination);
+    // 울림: 방에서 부는 것처럼 (설정 끔·작게·보통, 가벼운 모드는 짧게)
+    const rv = opts.reverb === false ? 'off' : reverbLevel();
+    if (rv !== 'off') {
+      const conv = ctx.createConvolver();
+      conv.buffer = reverbIR(ctx, LITE ? 1.0 : rv === 'normal' ? 1.9 : 1.3);
+      const wet = ctx.createGain();
+      wet.gain.value = rv === 'normal' ? 0.32 : 0.2;
+      master.connect(conv).connect(wet).connect(ctx.destination);
+    }
     this.startedAt = t0;
     const accGain = ctx.createGain();
     accGain.gain.value = opts.accVolume ?? 0.6;
@@ -260,8 +273,8 @@ export class ScorePlayer {
       const level = e.gain === undefined ? 1 : e.gain / 0.75; // 표현 없음 = 예전 크기
       if (useSample) {
         // 다음 음과 살짝 겹치게 (레가토). 이음줄로 이어지는 음은 샘플의 어택을 건너뛰고 부드럽게
-        const n = scheduleSampleNote(ctx, master, m, a0, e.len ?? e.dur * 0.98, opts.a4, 0.9 * level, { legatoIn: e.legatoIn, accent: e.accent });
-        if (n) { this.keep(n); return; }
+        const n = scheduleSampleNote(ctx, master, m, a0, e.len ?? e.dur * 0.98, opts.a4, 0.9 * level, { legatoIn: e.legatoIn, accent: e.accent, level: e.gain ?? 0.7, gainEnd: e.gainEnd !== undefined && e.gain ? e.gainEnd / e.gain : undefined });
+        if (n) { this.keep(...n); return; }
       }
       const osc = ctx.createOscillator();
       osc.setPeriodicWave(wave);
@@ -288,7 +301,7 @@ export class ScorePlayer {
       jobs.push({ at: e.time, run: () => {
         const a = t0 + e.time;
         const m = e.note.midi + (e.shift ?? 0);
-        if (e.inst !== 'piano' && useSample) { const n = scheduleSampleNote(ctx, accGain, m, a, e.dur * 0.98, opts.a4, 0.8); if (n) { this.keep(n); return; } }
+        if (e.inst !== 'piano' && useSample) { const n = scheduleSampleNote(ctx, accGain, m, a, e.dur * 0.98, opts.a4, 0.8); if (n) { this.keep(...n); return; } }
         this.keep(...pianoNote(ctx, accGain, midiToFreq(m, opts.a4), a, e.dur));
       } });
     }

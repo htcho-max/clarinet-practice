@@ -51,7 +51,7 @@ export function EchoTrainer({ pitch }: { pitch: ReturnType<typeof usePitch> }) {
     if (!pitch.on) await pitch.start(); // 마이크 권한은 먼저 (듣는 동안 묻지 않게)
     const plan = planPlayback(phraseScore(p), { bpm: BPM, from: 1, to: 1, countIn: false });
     await scorePlayer.play(plan, {
-      a4: settings.a4, click: false, voice: 'sample',
+      a4: settings.a4, click: false, voice: 'sample', reverb: false,
       // 앱 소리의 끝자락을 듣지 않게 잠깐 쉬고 듣기
       onEnd: () => { timer.current = setTimeout(() => setPhase('listen'), 350); },
     });

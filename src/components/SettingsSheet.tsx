@@ -85,6 +85,19 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
           <label><input type="checkbox" checked={settings.itemAlert} onChange={(e) => update({ itemAlert: e.target.checked })} data-testid="item-alert-setting" /> 항목 시간 끝 알림 (짧은 소리·진동)</label>
         </div>
 
+        <div className="row-setting col" data-testid="reverb-setting">
+          <span>재생 울림 <small className="muted">(방에서 부는 것처럼 소리에 잔향)</small></span>
+          <div className="segmented small">
+            {([['off', '끔'], ['small', '작게'], ['normal', '보통']] as const).map(([id, label]) => (
+              <button key={id} className={(settings.reverb ?? 'small') === id ? 'on' : ''} onClick={() => update({ reverb: id })} data-testid={`reverb-${id}`}>{label}</button>
+            ))}
+          </div>
+        </div>
+        {P.id === 'flute' && (
+          <div className="row-setting">
+            <label><input type="checkbox" checked={settings.fluteVibrato ?? true} onChange={(e) => update({ fluteVibrato: e.target.checked })} data-testid="flute-vib-setting" /> 플룻 재생에 비브라토 <small className="muted">(끄면 비브라토 없는 녹음으로, 여리게·세게에 따라 음색도 달라져요)</small></label>
+          </div>
+        )}
         <div className="row-setting col" data-testid="perf-setting">
           <span>성능 <small className="muted">(앱이 가끔 꺼지면 가벼운 모드)</small></span>
           <div className="segmented small">

@@ -1,5 +1,4 @@
-클라리넷 샘플 출처: npm 패키지 tonejs-instrument-clarinet-mp3 1.1.2 (MIT 표기)
-https://www.npmjs.com/package/tonejs-instrument-clarinet-mp3
-원본: tonejs-instruments (https://github.com/nbrosowsky/tonejs-instruments)
-앱에서 쓰기 위해 6초로 자르고 음량을 맞춘 뒤 80kbps 모노로 다시 인코딩했습니다. 파일 이름은 실음(콘서트 피치)입니다.
-(원본 Fs6 은 실제로 F6 에 가까워서 F6 으로 이름을 바꿨습니다.)
+클라리넷 샘플 출처: VSCO 2 Community Edition (Versilian Studios), Woodwinds/Clarinet/susLong — CC0 1.0 (퍼블릭 도메인)
+https://github.com/sgossner/VSCO-2-CE
+앱에서 쓰기 위해 모노로 바꾸고, 앞 무음을 자르고, 4초로 줄이고, 지속음 크기를 맞춘 뒤 64kbps MP3 로 다시 인코딩했습니다.
+파일 이름: <셈여림 층>-<실음 midi>.mp3 (p = v1, mf = v2, f = v3). 원본 "F#5" 샘플은 실제로 F6(실음)이라 89 로 붙였습니다.

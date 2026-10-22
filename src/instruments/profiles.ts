@@ -2,8 +2,9 @@ import { INST, type InstrumentId } from './current';
 import type { Instrument } from '../audio/notes';
 import { FINGERINGS as CLARINET_FINGERINGS, KEY_LABEL as CLARINET_KEY_LABEL } from '../clarinet/fingerings';
 import { FLUTE_FINGERINGS, FLUTE_KEY_LABEL } from '../flute/fingerings';
-import clarinetTuning from '../audio/clarinetSamples.json';
-import fluteTuning from '../audio/fluteSamples.json';
+import clarinetSamples from '../audio/clarinetSamples.json';
+import fluteSamples from '../audio/fluteSamples.json';
+import type { SampleManifest } from '../audio/sampler';
 
 /** 악기마다 다른 것을 한 곳에 (운지·음역·이조·샘플·안내 문구). 연습곡은 exercise/curriculum.ts 의 curriculumFor */
 export interface AnyFingering { keys: string[]; note?: string }
@@ -40,7 +41,8 @@ export interface Profile {
   /** 고급 음역 안내 */
   highNote: string;
   sampleDir: string;
-  sampleTuning: Record<string, [number, number]>;
+  /** 녹음 샘플 목록 (셈여림 층마다) */
+  sampleManifest: SampleManifest;
   sampleName: string;
   wave: 'reed' | 'flute';
   /** 음높이 감지 범위 (실음 Hz) */
@@ -95,7 +97,7 @@ export const CLARINET: Profile = {
   ],
   highNote: '알티시모 운지는 악기·리드마다 조금씩 달라요. 선생님과 확인하세요.',
   sampleDir: 'clarinet',
-  sampleTuning: clarinetTuning as unknown as Record<string, [number, number]>,
+  sampleManifest: clarinetSamples as unknown as SampleManifest,
   sampleName: '클라리넷',
   wave: 'reed',
   minFreq: 130, // 가장 낮은 실음 D3(147Hz) 아래 여유
@@ -158,7 +160,7 @@ export const FLUTE: Profile = {
   ],
   highNote: '3옥타브 운지는 숨이 빠르고 가늘어야 나요. 처음엔 하모닉스 연습으로 준비하세요.',
   sampleDir: 'flute',
-  sampleTuning: fluteTuning as unknown as Record<string, [number, number]>,
+  sampleManifest: fluteSamples as unknown as SampleManifest,
   sampleName: '플룻',
   wave: 'flute',
   minFreq: 220, // 가장 낮은 C4(262Hz) 아래 여유

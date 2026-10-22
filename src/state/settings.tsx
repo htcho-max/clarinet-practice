@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS, mergeSettings, type Settings } from '../data/settings
 import { instrumentSemis, setTranspose } from '../audio/notes';
 import { P } from '../instruments/profiles';
 import { setOutputLatency } from '../audio/latency';
+import { setSoundPrefs } from '../audio/soundPrefs';
 
 interface Ctx { settings: Settings; update: (patch: Partial<Settings>) => void; ready: boolean }
 const SettingsContext = createContext<Ctx>({ settings: DEFAULT_SETTINGS, update: () => {}, ready: false });
@@ -35,6 +36,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { setOutputLatency((settings.latencyMs ?? 0) / 1000); }, [settings.latencyMs]);
   useEffect(() => { setLite(resolveLite(settings.perfMode)); }, [settings.perfMode]);
+  setSoundPrefs({ reverb: settings.reverb ?? 'small', fluteVibrato: settings.fluteVibrato ?? true });
 
   return <SettingsContext.Provider value={{ settings, update, ready }}>{children}</SettingsContext.Provider>;
 }

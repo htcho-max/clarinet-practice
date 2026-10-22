@@ -27,6 +27,10 @@ export interface Settings {
   pitchTolerance: ToleranceId;
   /** 성능: 자동(메모리 4GB 이하면 가벼운 모드) / 가벼운 모드 / 보통 */
   perfMode: import('../state/lite').PerfMode;
+  /** 재생 울림(리버브): 끔 / 작게 / 보통 */
+  reverb: import('../audio/soundPrefs').ReverbLevel;
+  /** 플룻 재생에 비브라토 (끄면 비브라토 없는 녹음, 셈여림에 따라 여린·센 녹음) */
+  fluteVibrato: boolean;
 }
 
 export const DEFAULT_ROUTINE: RoutineItem[] = [
@@ -55,6 +59,8 @@ export const DEFAULT_SETTINGS: Settings = {
   latencyMs: 0,
   pitchTolerance: 'normal',
   perfMode: 'auto',
+  reverb: 'small',
+  fluteVibrato: true,
 };
 
 export function mergeSettings(stored: Partial<Settings> | undefined): Settings {
