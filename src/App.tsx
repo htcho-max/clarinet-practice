@@ -1,3 +1,4 @@
+import { onFingeringRequest } from './state/openRequest';
 import { takeCrash, crashText, type CrashInfo } from './state/crashGuard';
 import { resolveLite } from './state/lite';
 import { ItemAlert } from './components/ItemAlert';
@@ -35,6 +36,8 @@ export function App({ updatedFrom = null }: { updatedFrom?: string | null }) {
   // 뒤로 가기: 설정 창 → 닫기, 다른 탭 → 오늘, 오늘에서는 한 번 안내
   useBackLayer(tab !== 'today', () => go('today'));
   useBackLayer(settingsOpen, () => setSettingsOpen(false));
+  // 악보에서 음표를 길게 누르면 운지표 탭으로
+  useEffect(() => onFingeringRequest(() => go('fingering')), []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     setExitWarning(() => setToast('뒤로 버튼을 한 번 더 누르면 앱이 닫혀요'));
     const again = () => restoreGuard();
@@ -71,7 +74,7 @@ export function App({ updatedFrom = null }: { updatedFrom?: string | null }) {
             {tab === 'today' && <Today go={go} openSettings={() => setSettingsOpen(true)} />}
             {tab === 'tuner' && <Tuner />}
             {tab === 'metronome' && <Metronome />}
-            {tab === 'fingering' && <Fingering />}
+            {tab === 'fingering' && <Fingering go={go} />}
             {tab === 'tone' && <Tone />}
             {tab === 'score' && <Score />}
             {tab === 'log' && <Log goTab={go} />}

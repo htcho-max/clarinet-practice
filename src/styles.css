@@ -552,3 +552,15 @@ button.mini.on { border-color: var(--accent); color: var(--accent); font-weight:
 /* 가벼운 모드: 겹쳐 그리기(블렌드) 끄기 */
 html.lite .acc-hl { mix-blend-mode: normal; background: rgba(250, 204, 21, 0.35); }
 .crash-note { border: 1px solid var(--warn); background: var(--warn-zone); }
+
+/* 음표 길게 누르기 (→ 운지표) */
+.sheet-wrap { -webkit-touch-callout: none; }
+.lp-ring { position: absolute; transform: translate(-50%, -50%) scale(.55); border-radius: 50%; pointer-events: none;
+  border: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
+  animation: lp-grow linear forwards; }
+@keyframes lp-grow { from { transform: translate(-50%, -50%) scale(.55); opacity: .5; } to { transform: translate(-50%, -50%) scale(1.15); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .lp-ring { animation: none; transform: translate(-50%, -50%); } }
+.fc-back { align-self: flex-start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page.fingering-page > .fc-back, .page.fingering-page > [data-testid=fg-msg] { grid-column: 1 / -1; }
+.rec-cleanup { display: flex; flex-direction: column; gap: 4px; }
+.warn-text { color: var(--warn); }

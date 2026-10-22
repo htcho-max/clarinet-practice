@@ -9,6 +9,8 @@ import { usePitch } from '../state/usePitch';
 import { useSettings } from '../state/settings';
 import { useWakeLock } from '../state/wakeLock';
 import { useBackLayer } from '../state/back';
+import { requestScore, takeFingeringRequest, type FingeringRequest } from '../state/openRequest';
+import type { TabId } from '../components/TabBar';
 
 type Range = 'low' | 'mid' | 'high';
 const RANGES = P.fgRanges;
@@ -17,7 +19,7 @@ type Mode = 'chart' | 'quiz';
 
 const koName = (midi: number) => NOTE_NAMES_KO[NOTE_NAMES[((midi % 12) + 12) % 12]];
 
-export function Fingering() {
+export function Fingering({ go }: { go?: (t: TabId) => void } = {}) {
   const { settings } = useSettings();
   const [range, setRange] = useState<Range>(() => { try { return (localStorage.getItem('clarinet-fg-range') as Range) || 'low'; } catch { return 'low'; } });
   const [sel, setSel] = useState(P.longDefault);
@@ -28,6 +30,27 @@ export function Fingering() {
   useEffect(() => { try { localStorage.setItem('clarinet-fg-range', range); } catch { /* 무시 */ } }, [range]);
   // 휴대폰 뒤로 가기: 퀴즈 → 운지표
   useBackLayer(mode === 'quiz', () => setMode('chart'));
+  // 악보에서 음표를 길게 눌러 왔을 때: 그 음을 고르고, "◀ 악보로" 돌아가기
+  const [ret, setRet] = useState<FingeringRequest['back'] | null>(null);
+  const [fgMsg, setFgMsg] = useState<string | null>(null);
+  useEffect(() => {
+    const q = takeFingeringRequest();
+    if (!q) return;
+    setMode('chart');
+    if (fingeringFor(q.midi)) {
+      setSel(q.midi); setFollow(false); setFgMsg(null);
+      const nr = RANGES.find((x) => q.midi >= x.lo && q.midi <= x.hi);
+      if (nr) setRange(nr.id);
+    } else setFgMsg(`${prettyName(q.midi)}은(는) ${P.name} 운지표에 없는 음이에요.`);
+    setRet(q.back ?? null);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const backToScore = () => {
+    if (!ret) return;
+    requestScore({ scoreId: ret.scoreId, measure: ret.from, to: ret.to });
+    setRet(null);
+    go?.('score');
+  };
+  useBackLayer(!!ret && !!go, backToScore);
 
   const r = RANGES.find((x) => x.id === range)!;
   const list = FINGERINGS.filter((n) => n.midi >= r.lo && n.midi <= r.hi);
@@ -52,6 +75,8 @@ export function Fingering() {
 
   return (
     <section className="page fingering-page">
+      {ret && go && <button className="secondary fc-back" onClick={backToScore} data-testid="fc-back-score">◀ 악보로 ({ret.title} {ret.measure}마디)</button>}
+      {fgMsg && <p className="hint" data-testid="fg-msg">{fgMsg}</p>}
       <div className="segmented">
         <button className={mode === 'chart' ? 'on' : ''} onClick={() => setMode('chart')}>운지표</button>
         <button className={mode === 'quiz' ? 'on' : ''} onClick={() => setMode('quiz')} data-testid="quiz-tab">운지 퀴즈</button>

@@ -1,3 +1,4 @@
+import { RecCleanup } from './RecCleanup';
 import { autoLite, deviceMemory } from '../state/lite';
 import { crashLog } from '../state/crashGuard';
 import { fullscreenSupported, appFullscreen, fullscreenPref, setFullscreenPref, enterFullscreen } from '../state/fullscreen';
@@ -124,6 +125,7 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
         <button className="secondary" onClick={() => backup(true)} disabled={busy}>백업 파일 만들기 (녹음 포함, 파일이 커요)</button>
         <input ref={file} type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && restore(e.target.files[0])} data-testid="restore-file" />
         <button className="secondary" onClick={() => file.current?.click()} disabled={busy}>백업에서 되돌리기</button>
+        <RecCleanup onDone={() => storageInfo().then(setInfo)} />
         {dataMsg && <p className="muted small" data-testid="data-msg">{dataMsg}</p>}
 
         <h3>앱 정보</h3>

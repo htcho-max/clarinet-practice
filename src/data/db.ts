@@ -81,6 +81,8 @@ export interface ScoreRun {
   weakMeasures?: number[];
   /** 음별 음정 [악보음 midi, 센트 합(부호 있음), 음 수] — 음정 습관 지도 */
   noteCents?: [number, number, number][];
+  /** 녹음 자동 정리로 녹음만 지웠음 */
+  recCleared?: boolean;
   /** 템포 사다리로 채점했을 때 목표 템포 */
   ladderBpm?: number;
   /** 그때 쓴 리드(플룻은 헤드조인트 위치) */
