@@ -8,7 +8,7 @@ import { measureStats, reviewChanges } from '../src/data/review';
 
 const note = (step: string, dur: number) => `<note><pitch><step>${step}</step><octave>4</octave></pitch><duration>${dur}</duration><voice>1</voice></note>`;
 const xml = (nums: string[], extra = '') => `<?xml version="1.0"?><score-partwise><part-list><score-part id="P1"/></part-list><part id="P1">${nums
-  .map((n, i) => `<measure number="${n}"${i === 0 ? ' implicit="yes"' : ''}>${i === 0 ? `<attributes><divisions>1</divisions><time><beats>2</beats><beat-type>4</beat-type></time></attributes>${extra}` : ''}${note('A', 1)}</measure>`)
+  .map((n, i) => `<measure number="${n}"${i === 0 ? ' implicit="yes"' : ''}>${i === 0 ? `<attributes><divisions>1</divisions><time><beats>2</beats><beat-type>4</beat-type></time></attributes>${extra}` : ''}${note('A', 1)}${i === 0 ? '' : '<note><rest/><duration>1</duration><voice>1</voice></note>'}</measure>`)
   .join('')}</part></score-partwise>`;
 
 describe('못갖춘마디 0', () => {

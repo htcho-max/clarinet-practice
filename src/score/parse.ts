@@ -5,6 +5,8 @@ export interface Art {
   accent?: boolean;
   tenuto?: boolean;
   fermata?: boolean;
+  /** 바로 앞 쉼표에 늘임표 (그 쉼표 길이, 4분음표 단위) — 이 음 앞에서 더 쉼 */
+  restFermata?: number;
   /** 이 음 다음에 숨표(쉼표 모양 ' 또는 V, caesura //) */
   breath?: boolean;
   slurNext?: boolean;
@@ -13,7 +15,7 @@ export interface Art {
   /** 이 음에서 크레셴도·디미누엔도 시작 / 끝 */
   wedge?: 'cresc' | 'dim' | 'stop';
   /** 이 음부터 rit.(점점 느리게) / a tempo(원래 빠르기로) */
-  tempo?: 'rit' | 'atempo';
+  tempo?: 'rit' | 'accel' | 'atempo';
   /** 꾸밈 (트릴·모르덴트·턴) — 재생 때만. upper/lower 는 조성 안의 위·아래 이웃음 */
   orn?: { kind: 'trill' | 'mordent' | 'invmordent' | 'turn'; upper: number; lower: number };
   /** 앞에 붙은 꾸밈음 (재생 때만, 채점 안 함) */
@@ -47,9 +49,21 @@ export interface ParsedScore {
   bars: Bar[];
   /** 악보에 적힌 처음 템포 (4분음표 기준 BPM, <sound tempo>), 없으면 undefined */
   tempo?: number;
+  /** 중간에 바뀌는 템포 (악보 순서, 처음 것 포함) */
+  tempos?: { measure: number; beat: number; bpm: number }[];
+  /** 박자표가 바뀌는 마디 → [박 수, 음표] (처음 마디 포함, 바뀐 마디만) */
+  timeChanges?: Map<number, [number, number]>;
 }
 /** 마디의 도돌이표 정보. ending = 몇 번째에 연주하는 괄호인지 (1번 괄호 [1], 2번 괄호 [2]) */
-export interface Bar { num: number; forward?: boolean; backward?: boolean; times?: number; ending?: number[] }
+export interface Bar {
+  num: number; forward?: boolean; backward?: boolean; times?: number; ending?: number[];
+  /** 이 마디 끝에서 처음으로(dc) / 세뇨로(ds) */
+  jump?: 'dc' | 'ds';
+  /** D.C.·D.S. 뒤에 여기서 끝 */ fine?: boolean;
+  /** 세뇨 𝄋 (이 마디부터) */ segno?: boolean;
+  /** D.C.·D.S. 뒤에 이 마디 끝에서 코다로 */ toCoda?: boolean;
+  /** 코다 𝄌 (이 마디부터) */ coda?: boolean;
+}
 export interface ParseOptions {
   /** 몇 번째 파트 (0부터) */
   part?: number;
@@ -131,6 +145,7 @@ function parseDoc(doc: Document, opt: ParseOptions): ParsedScore {
     for (const w of Array.from(el.getElementsByTagName('words'))) {
       const t = (w.textContent ?? '').trim().toLowerCase();
       if (/^(rit|rall|ritard|riten|allarg)/.test(t)) pend.tempo = 'rit';
+      else if (/^(accel|stringendo|string\.)/.test(t)) pend.tempo = 'accel';
       else if (/^(a tempo|tempo i|tempo primo)/.test(t)) pend.tempo = 'atempo';
       else if (/^(cresc)/.test(t)) pend.wedge = 'cresc';
       else if (/^(dim|decresc)/.test(t)) pend.wedge = 'dim';
@@ -153,6 +168,9 @@ function parseDoc(doc: Document, opt: ParseOptions): ParsedScore {
   let nominal = 4;
   const bars: Bar[] = [];
   let ending: number[] | null = null;
+  const codaMarks: number[] = []; // 코다 기호가 있는 마디 (두 번 나오면 처음 = To Coda, 마지막 = 코다)
+  const tempos: { measure: number; beat: number; bpm: number }[] = [];
+  const timeChanges = new Map<number, [number, number]>();
   for (const m of Array.from(part.children).filter((c) => c.nodeName === 'measure')) {
     // 못갖춘마디 0 도 그대로 (0 을 거짓으로 보면 1번 마디와 겹침). 번호가 없거나 겹치면 앞 번호 + 1
     const raw = (m.getAttribute('number') ?? '').trim();
@@ -164,6 +182,25 @@ function parseDoc(doc: Document, opt: ParseOptions): ParsedScore {
     let maxPos = 0;
     const bar: Bar = { num };
     bars.push(bar);
+    // 되돌이 기호 (D.C.·D.S.·Fine·세뇨·코다): <sound> 속성, 기호, 글자
+    for (const snd of Array.from(m.getElementsByTagName('sound'))) {
+      if (snd.getAttribute('dacapo') === 'yes') bar.jump = 'dc';
+      if (snd.hasAttribute('dalsegno')) bar.jump = 'ds';
+      if (snd.hasAttribute('fine')) bar.fine = true;
+      if (snd.hasAttribute('segno')) bar.segno = true;
+      if (snd.hasAttribute('tocoda')) bar.toCoda = true;
+      if (snd.hasAttribute('coda')) bar.coda = true;
+    }
+    if (m.getElementsByTagName('segno').length) bar.segno = true;
+    if (m.getElementsByTagName('coda').length) codaMarks.push(bars.length - 1);
+    for (const w of Array.from(m.getElementsByTagName('words'))) {
+      const t = (w.textContent ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+      if (/^(d\.\s?c\.?|da capo)/.test(t)) bar.jump = 'dc';
+      else if (/^(d\.\s?s\.?|dal segno)/.test(t)) bar.jump = 'ds';
+      else if (/^fine\.?$/.test(t)) bar.fine = true;
+      else if (/^to coda/.test(t)) bar.toCoda = true;
+      else if (/^coda$/.test(t)) bar.coda = true;
+    }
     for (const bl of Array.from(m.children).filter((c) => c.nodeName === 'barline')) {
       const rep = bl.getElementsByTagName('repeat')[0];
       if (rep?.getAttribute('direction') === 'forward') bar.forward = true;
@@ -184,10 +221,21 @@ function parseDoc(doc: Document, opt: ParseOptions): ParsedScore {
         const f = text(el, 'fifths');
         if (f) fifths = Number(f);
         const b = text(el, 'beats'), bt = text(el, 'beat-type');
-        if (b && bt) { if (measures.length === 1) time = [Number(b), Number(bt)]; nominal = (Number(b) * 4) / Number(bt); }
+        if (b && bt) { if (measures.length === 1) time = [Number(b), Number(bt)]; nominal = (Number(b) * 4) / Number(bt); timeChanges.set(num, [Number(b), Number(bt)]); }
         continue;
       }
-      if (el.nodeName === 'direction') { if (!all) readDirection(el); continue; }
+      if (el.nodeName === 'direction') {
+        if (!all) readDirection(el);
+        const st = el.getElementsByTagName('sound')[0]?.getAttribute('tempo');
+        const bpm = st ? Number(st) : NaN;
+        if (Number.isFinite(bpm) && bpm >= 20 && bpm <= 300) tempos.push({ measure: num, beat: pos, bpm });
+        continue;
+      }
+      if (el.nodeName === 'sound') {
+        const bpm = Number(el.getAttribute('tempo') ?? NaN);
+        if (Number.isFinite(bpm) && bpm >= 20 && bpm <= 300) tempos.push({ measure: num, beat: pos, bpm });
+        continue;
+      }
       if (el.nodeName === 'backup') { pos -= Number(text(el, 'duration')) / divisions; continue; }
       if (el.nodeName === 'forward') { pos += Number(text(el, 'duration')) / divisions; maxPos = Math.max(maxPos, pos); continue; }
       if (el.nodeName !== 'note') continue;
@@ -203,7 +251,7 @@ function parseDoc(doc: Document, opt: ParseOptions): ParsedScore {
       const start = isChord ? lastStart : pos;
       if (!isChord) { lastStart = pos; pos += dur; maxPos = Math.max(maxPos, pos); }
       if (voice !== '1' && !all) continue;
-      if (el.getElementsByTagName('rest').length) continue;
+      if (el.getElementsByTagName('rest').length) { if (!all && el.getElementsByTagName('fermata').length) pend.restFermata = dur; continue; }
       const p = el.getElementsByTagName('pitch')[0];
       if (!p) continue;
       const midi = midiOf(p);
@@ -258,7 +306,9 @@ function parseDoc(doc: Document, opt: ParseOptions): ParsedScore {
       if (track) { els.push(el); tieEls.push([]); }
     }
     const whole = Array.from(m.getElementsByTagName('rest')).some((r) => r.getAttribute('measure') === 'yes');
-    measureLen.set(num, whole || maxPos === 0 ? nominal : m.getAttribute('implicit') === 'yes' ? maxPos : Math.max(maxPos, nominal));
+    // 마디 길이는 실제로 적힌 음·쉼표 길이로: 못갖춘마디, 도돌이표 때문에 둘로 나눈 마디(implicit 표시가 없어도),
+    // 박자표보다 짧게 끝나는 마지막 마디가 빈 박 없이 이어지게. 비었거나 온쉼표 마디만 박자표 길이
+    measureLen.set(num, whole || maxPos === 0 ? nominal : maxPos);
   }
   // 마지막 음 뒤에 남은 지시(쐐기 끝 등)는 마지막 음에
   if (!all && notes.length && (pend.dyn || pend.wedge || pend.tempo)) Object.assign(notes[notes.length - 1].art ?? (notes[notes.length - 1].art = {}), pend);
@@ -269,28 +319,56 @@ function parseDoc(doc: Document, opt: ParseOptions): ParsedScore {
   if (all) notes.sort((a, b) => a.measure - b.measure || a.beat - b.beat);
   const snd = Array.from(root.getElementsByTagName('sound')).find((e) => e.getAttribute('tempo'));
   const tq = snd ? Number(snd.getAttribute('tempo')) : NaN;
+  // 코다 기호만 두 번 있으면: 처음 = To Coda (그 마디 끝에서), 마지막 = 코다
+  if (codaMarks.length >= 2 && !bars.some((b) => b.toCoda)) { bars[codaMarks[0]].toCoda = true; bars[codaMarks[codaMarks.length - 1]].coda = true; }
+  else if (codaMarks.length === 1 && !bars.some((b) => b.coda)) bars[codaMarks[0]].coda = true;
+  const nav = bars.some((b) => b.forward || b.backward || b.ending || b.jump);
   const res: ParsedScore = {
-    title, measures, notes, measureLen, time, parts, transpose, bars: bars.some((b) => b.forward || b.backward || b.ending) ? bars : [],
+    title, measures, notes, measureLen, time, parts, transpose, bars: nav ? bars : [],
     ...(Number.isFinite(tq) && tq >= 20 && tq <= 300 ? { tempo: Math.round(tq) } : {}),
+    ...(tempos.length > 1 ? { tempos } : {}),
+    ...(timeChanges.size > 1 ? { timeChanges } : {}),
   };
   return track ? ({ ...res, doc, els, ties: tieEls } as TrackedScore) : res;
 }
 
-/** 도돌이표가 있는지 */
-export const hasRepeats = (s: ParsedScore) => s.bars.some((b) => b.backward);
+/** 도돌이표·D.C.·D.S. 가 있는지 */
+export const hasRepeats = (s: ParsedScore) => s.bars.some((b) => b.backward || b.jump);
 
 /**
  * 도돌이표대로 펼친 마디 순서 (마디 번호). 도돌이표가 없으면 measures 그대로.
  * 1·2번 괄호, 여러 번 반복(times), 도돌이 시작 표가 없으면 처음부터.
+ * D.C.(처음으로)·D.S.(세뇨로) 뒤에는 도돌이표를 다시 하지 않고 마지막 괄호만, Fine 에서 끝, To Coda 에서 코다로.
  */
 export function playOrder(s: ParsedScore): number[] {
   if (!s.bars.length) return [...s.measures];
   const bars = s.bars;
+  // 괄호 묶음마다 마지막 괄호 (D.C. 뒤에는 그것만)
+  const lastEnding = bars.map(() => false);
+  for (let a = 0; a < bars.length; ) {
+    if (!bars[a].ending) { a++; continue; }
+    let b = a;
+    while (b + 1 < bars.length && bars[b + 1].ending) b++;
+    const last = bars[b].ending!;
+    for (let k = a; k <= b; k++) lastEnding[k] = bars[k].ending!.some((x) => last.includes(x));
+    a = b + 1;
+  }
+  const segnoIdx = bars.findIndex((b) => b.segno);
+  const codaIdx = bars.findIndex((b) => b.coda);
   const out: number[] = [];
-  let i = 0, startIdx = 0, pass = 1, guard = 0;
+  let i = 0, startIdx = 0, pass = 1, guard = 0, jumped = false;
   const jumps = new Map<number, number>();
   while (i < bars.length && guard++ < 10000) {
     const b = bars[i];
+    if (jumped) {
+      // 되돌아온 뒤: 도돌이표는 건너뛰고(마지막 괄호만), Fine 에서 끝, To Coda 에서 코다로
+      if (b.ending && !lastEnding[i]) { i++; continue; }
+      out.push(b.num);
+      if (b.fine) break;
+      if (b.toCoda && codaIdx > i) { i = codaIdx; continue; }
+      i++;
+      continue;
+    }
     if (b.forward && startIdx !== i) { startIdx = i; pass = 1; }
     if (b.ending && !b.ending.includes(pass)) { i++; continue; }
     out.push(b.num);
@@ -303,6 +381,11 @@ export function playOrder(s: ParsedScore): number[] {
     } else if (b.ending && !bars[i + 1]?.ending) {
       // 마지막 괄호를 지나면 반복 끝
       startIdx = i + 1; pass = 1;
+    }
+    if (b.jump && (b.jump === 'dc' || segnoIdx >= 0)) {
+      jumped = true;
+      i = b.jump === 'dc' ? 0 : segnoIdx;
+      continue;
     }
     i++;
   }

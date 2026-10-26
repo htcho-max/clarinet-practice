@@ -55,6 +55,7 @@ export function expressNotes(s: ParsedScore): NoteExpression[] {
   const out: NoteExpression[] = [];
   let level = DEFAULT_LEVEL;
   let ritFrom: number | null = null;
+  let accel = false;
   let wedge: { from: number; to: number; i0: number; i1: number } | null = null;
   notes.forEach((n, i) => {
     const a = n.art ?? {};
@@ -78,28 +79,71 @@ export function expressNotes(s: ParsedScore): NoteExpression[] {
       g = w.from + (w.to - w.from) * Math.min(1, t);
       if (i >= w.i1) { level = w.to; wedge = null; }
     }
-    if (a.tempo === 'rit') ritFrom = absQ[i];
+    if (a.tempo === 'rit' || a.tempo === 'accel') { ritFrom = absQ[i]; accel = a.tempo === 'accel'; }
     if (a.tempo === 'atempo') ritFrom = null;
-    const tempo = ritFrom === null ? 1 : Math.max(0.72, 1 - 0.035 * (absQ[i] + n.dur / 2 - ritFrom)); // 음 가운데 기준
+    // rit.: 4분음표마다 3.5%씩 느리게(최저 72%), accel.: 3%씩 빠르게(최고 125%). 음 가운데 기준
+    const d = ritFrom === null ? 0 : absQ[i] + n.dur / 2 - ritFrom;
+    const tempo = ritFrom === null ? 1 : accel ? Math.min(1.25, 1 + 0.03 * d) : Math.max(0.72, 1 - 0.035 * d);
     const accent = !!a.accent || a.dyn === 'sf' || a.dyn === 'sfz' || a.dyn === 'rf' || a.dyn === 'rfz';
     out.push({ gain: g, tempo, accent });
   });
   return out;
 }
 
+/**
+ * 마디마다 박자: 박자표(중간에 바뀌면 그대로), 한 마디 길이, 한 박 길이(4분음표 단위),
+ * 마디가 시작하는 박 위치 phase — 못갖춘마디는 비어 있는 앞 박들, 도돌이표 때문에 둘로 나눈 마디의 뒤쪽은 앞쪽 길이
+ */
+export function measureMeter(s: ParsedScore): Map<number, { beats: number; unit: number; nominal: number; beatQ: number; phase: number }> {
+  const out = new Map<number, { beats: number; unit: number; nominal: number; beatQ: number; phase: number }>();
+  let cur: [number, number] = s.time;
+  let prev: { len: number; nominal: number; phase: number } | null = null;
+  s.measures.forEach((m, k) => {
+    cur = s.timeChanges?.get(m) ?? cur;
+    const [beats, unit] = cur;
+    const nominal = (beats * 4) / unit, beatQ = 4 / unit;
+    const len = s.measureLen.get(m) ?? nominal;
+    let phase = 0;
+    if (len < nominal - 1e-6) {
+      if (k === 0) phase = nominal - len; // 못갖춘마디
+      else if (prev && prev.len < prev.nominal - 1e-6 && prev.phase === 0 && Math.abs(prev.len + len - nominal) < 1e-6) phase = prev.len; // 나눈 마디의 뒤쪽
+    }
+    out.set(m, { beats, unit, nominal, beatQ, phase });
+    prev = { len, nominal, phase };
+  });
+  return out;
+}
+
+/** 음마다 템포 배율 (악보 중간 ♩=… / 처음 템포). 바뀌는 곳이 없으면 null */
+export function tempoFactors(s: ParsedScore): number[] | null {
+  const ts = s.tempos;
+  if (!ts || ts.length < 2) return null;
+  const idx = new Map(s.measures.map((m, k) => [m, k]));
+  const key = (m: number, b: number) => (idx.get(m) ?? 0) * 1000 + b;
+  const sorted = [...ts].sort((a, b) => key(a.measure, a.beat) - key(b.measure, b.beat));
+  const base = s.tempo ?? sorted[0].bpm;
+  return s.notes.map((n) => {
+    let f = 1;
+    for (const t of sorted) if (key(t.measure, t.beat) <= key(n.measure, n.beat) + 1e-6) f = t.bpm / base;
+    return f;
+  });
+}
+
 /** 구간의 음을 시간(초)으로. bpm 은 4분음표 기준 */
 export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[] = []): Plan {
   const q = 60 / o.bpm;
-  const [beats, unit] = s.time;
-  const beatQ = 4 / unit; // 한 박 = 4분음표 몇 개
-  const countQ = o.countIn ? beats * beatQ : 0;
+  const meter = measureMeter(s);
+  const lenOf = (m: number) => s.measureLen.get(m) ?? meter.get(m)!.nominal;
   // 마디 순서대로 시작 위치 (도돌이표를 펼치면 같은 마디가 여러 번)
+  const play = (o.order ?? s.measures).filter((m) => m >= o.from && m <= o.to);
+  const first = play.length ? meter.get(play[0]) : undefined;
+  // 카운트인: 한 마디 + (못갖춘마디면 그 마디에서 비어 있는 앞 박들) → 첫 음이 제 박에 들어가게
+  const countQ = o.countIn && first ? first.nominal + first.phase : 0;
   const segs: { m: number; Q0: number }[] = [];
   let acc = countQ;
-  for (const m of o.order ?? s.measures) {
-    if (m < o.from || m > o.to) continue;
+  for (const m of play) {
     segs.push({ m, Q0: acc });
-    acc += s.measureLen.get(m) ?? beats * beatQ;
+    acc += lenOf(m);
   }
   const notesOf = new Map<number, number[]>();
   s.notes.forEach((n, i) => { const a = notesOf.get(n.measure) ?? []; a.push(i); notesOf.set(n.measure, a); });
@@ -107,13 +151,18 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
   const inRange = segs.flatMap((g) => (notesOf.get(g.m) ?? []).map((i) => ({ n: s.notes[i], i, Q: g.Q0 + s.notes[i].beat })));
   // 4분음표 위치 → 초. 표현을 살리면 음마다 빠르기 배율(rit.)과 늘임표(그 음 끝에 더 머묾)를 반영
   const bps: { Q: number; t: number; f: number }[] = [{ Q: 0, t: 0, f: 1 }];
-  if (ex) {
+  // 악보 중간의 템포 바뀜 (♩=… 표시): 처음 템포에 대한 배율로 재생 템포에 곱함
+  const tf = tempoFactors(s);
+  const useMap = !!ex || !!tf;
+  if (useMap) {
     for (const { n, i, Q } of inRange) {
       const last = bps[bps.length - 1];
       if (Q < last.Q - 1e-9) continue;
-      const t = last.t + ((Q - last.Q) * q) / last.f;
-      bps.push({ Q, t, f: ex[i].tempo });
-      if (n.art?.fermata) {
+      let t = last.t + ((Q - last.Q) * q) / last.f;
+      // 늘임표가 붙은 쉼표 뒤: 이 음 앞에서 더 쉬기
+      if (ex && n.art?.restFermata) { const extra = Math.min(2, n.art.restFermata * q * 0.8 + 0.3); bps.push({ Q, t: t + extra, f: last.f }); t += extra; }
+      bps.push({ Q, t, f: (ex ? ex[i].tempo : 1) * (tf ? tf[i] : 1) });
+      if (ex && n.art?.fermata) {
         const Qe = Q + n.dur;
         const te = t + (n.dur * q) / ex[i].tempo;
         bps.push({ Q: Qe, t: te + Math.min(2, n.dur * q * 0.8 + 0.3), f: ex[i].tempo });
@@ -121,7 +170,7 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
     }
   }
   const qToT = (Q: number) => {
-    if (!ex) return Q * q;
+    if (!useMap) return Q * q;
     let k = 0;
     for (let j = 0; j < bps.length; j++) if (bps[j].Q <= Q + 1e-9) k = j;
     return bps[k].t + ((Q - bps[k].Q) * q) / bps[k].f;
@@ -137,8 +186,9 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
       const L = e.dur;
       const next = events[k + 1];
       const joined = !!next && next.time - (e.time + L) < 0.02; // 다음 음이 바로 이어짐 (쉼표 없음)
-      const slur = !!a.slurNext && joined && !a.stacc;
+      const slur = !!a.slurNext && joined && !a.stacc && !a.breath;
       e.len = a.stacc ? Math.min(L * (a.slurNext ? 0.6 : 0.45), 0.4)
+        : a.breath ? L - Math.min(0.18, L * 0.3) // 숨표: 숨 쉴 틈
         : slur ? L + 0.05
           : a.tenuto ? L * 0.97
             : L - Math.min(0.08, L * 0.18);
@@ -151,10 +201,17 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
     });
   }
   const totalT = qToT(acc);
+  // 박 소리: 카운트인은 첫 마디 박자로, 그다음은 마디마다 그 마디 박자표·마디 안 위치(못갖춘마디·나눈 마디)대로
   const clicks: { time: number; accent: boolean }[] = [];
-  for (let k = 0; k * beatQ < acc - 1e-9; k++) {
-    const tq = k * beatQ;
-    clicks.push({ time: qToT(tq), accent: k % beats === 0 });
+  if (first) for (let x = 0; x < countQ - 1e-9; x += first.beatQ) clicks.push({ time: qToT(x), accent: Math.abs(x % first.nominal) < 1e-6 });
+  for (const g of segs) {
+    const mt = meter.get(g.m)!;
+    const L = lenOf(g.m);
+    const x0 = (mt.beatQ - (mt.phase % mt.beatQ)) % mt.beatQ;
+    for (let x = x0; x < L - 1e-6; x += mt.beatQ) {
+      const pos = mt.phase + x;
+      clicks.push({ time: qToT(g.Q0 + x), accent: Math.abs(pos % mt.nominal) < 1e-6 || Math.abs((pos % mt.nominal) - mt.nominal) < 1e-6 });
+    }
   }
   const accEv: PlayEvent[] = [];
   for (const ap of accParts) {
