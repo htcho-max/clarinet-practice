@@ -31,6 +31,8 @@ export interface Settings {
   reverb: import('../audio/soundPrefs').ReverbLevel;
   /** 플룻 재생에 비브라토 (끄면 비브라토 없는 녹음, 셈여림에 따라 여린·센 녹음) */
   fluteVibrato: boolean;
+  /** 재생 악기 소리 (soundSets.ts 의 id). 없으면 기본 (VSCO 녹음) */
+  soundSet?: string;
 }
 
 export const DEFAULT_ROUTINE: RoutineItem[] = [

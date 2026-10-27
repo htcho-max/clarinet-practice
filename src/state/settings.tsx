@@ -36,7 +36,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { setOutputLatency((settings.latencyMs ?? 0) / 1000); }, [settings.latencyMs]);
   useEffect(() => { setLite(resolveLite(settings.perfMode)); }, [settings.perfMode]);
-  setSoundPrefs({ reverb: settings.reverb ?? 'small', fluteVibrato: settings.fluteVibrato ?? true });
+  setSoundPrefs({ reverb: settings.reverb ?? 'small', fluteVibrato: settings.fluteVibrato ?? true, soundSet: settings.soundSet });
 
   return <SettingsContext.Provider value={{ settings, update, ready }}>{children}</SettingsContext.Provider>;
 }

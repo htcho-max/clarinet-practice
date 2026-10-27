@@ -1019,6 +1019,36 @@ try {
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
     await browser.close();
   }
+  // ── 18. 악기 소리 고르기 (설정 → 악기 소리) · 들어 보기 · 악보 듣기에 쓰임 ──
+  {
+    const { browser, page, errors } = await launch('bb466.wav');
+    const got = [];
+    page.on('request', (r) => { const m = r.url().match(/\/(clarinet|flute)\/([a-z0-9-]+\/)?([\w-]+)\.mp3$/); if (m) got.push(`${m[2] ?? ''}${m[3]}`); });
+    await page.waitForTimeout(800);
+    await page.getByRole('button', { name: '설정' }).click();
+    ok(await seen(page.getByTestId('sound-setting')), '설정: 악기 소리');
+    const ids = await page.locator('[data-testid^=sound-]').evaluateAll((els) => els.map((e) => e.dataset.testid));
+    ok(['sound-vsco', 'sound-musyng', 'sound-fatboy', 'sound-fluid'].every((x) => ids.includes(x)), `소리 목록 (${ids.join(' ')})`);
+    ok(/\bon\b/.test(await page.getByTestId('sound-vsco').getAttribute('class')), '기본은 VSCO 녹음');
+    await page.getByTestId('sound-fluid').click();
+    await page.waitForTimeout(2500);
+    ok(/\bon\b/.test(await page.getByTestId('sound-fluid').getAttribute('class')), 'Fluid R3 고름');
+    ok(got.some((g) => g.startsWith('fluid/')), `고르면 그 소리를 받아서 들려줌 (${got.filter((g) => g.startsWith('fluid/')).length}개)`);
+    await page.getByTestId('sound-preview').click();
+    await page.waitForTimeout(1500);
+    await page.keyboard.press('Escape').catch(() => {});
+    await page.reload();
+    await page.waitForTimeout(1500);
+    await page.getByRole('button', { name: '설정' }).click();
+    ok(/\bon\b/.test(await page.getByTestId('sound-fluid').getAttribute('class')), '다시 열어도 고른 소리 그대로');
+    await page.getByTestId('sound-musyng').click();
+    await page.waitForTimeout(2500);
+    ok(got.some((g) => g.startsWith('musyng/')), '다른 소리로 바꾸기');
+    await page.getByTestId('sound-vsco').click();
+    await page.waitForTimeout(1500);
+    ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
+    await browser.close();
+  }
 } catch (e) {
   console.log('FAIL 예외', e.message.split('\n')[0]);
   process.exitCode = 1;

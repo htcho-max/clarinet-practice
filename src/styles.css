@@ -604,3 +604,7 @@ html.lite .acc-hl { mix-blend-mode: normal; background: rgba(250, 204, 21, 0.35)
 @keyframes breath-soon { from { transform: translate(-50%, -100%) scale(1); } to { transform: translate(-50%, -100%) scale(1.7); color: #f59e0b; } }
 .breath-tag.static { position: static; transform: none; display: inline-block; pointer-events: none; }
 .breath-bar [data-testid=breath-why] { flex-basis: 100%; }
+/* 악기 소리 고르기 */
+.sound-list { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.sound-item { text-align: left; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text); line-height: 1.35; }
+.sound-item.on { border-color: var(--accent, #2563eb); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #2563eb) 30%, transparent); }

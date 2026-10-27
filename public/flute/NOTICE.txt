@@ -2,3 +2,9 @@
 https://github.com/sgossner/VSCO-2-CE
 앱에서 쓰기 위해 모노로 바꾸고, 앞 무음을 자르고, 4초로 줄이고, 지속음 크기를 맞춘 뒤 64kbps MP3 로 다시 인코딩했습니다.
 파일 이름: <층>-<실음 midi>.mp3 (vib = 비브라토, p = 비브라토 없이 여리게(v1), f = 비브라토 없이 세게(v3, 없으면 v2)).
+
+다른 소리 (설정 → 악기 소리). gleitz/midi-js-soundfonts 가 사운드폰트에서 미리 뽑아 둔 음 (https://github.com/gleitz/midi-js-soundfonts)
+- musyng/: Musyng Kite 사운드폰트 — CC BY-SA 3.0 (https://creativecommons.org/licenses/by-sa/3.0/)
+- fatboy/: FatBoy 사운드폰트 (https://fatboy.site) — CC BY-SA 3.0
+- fluid/: Fluid R3 GM 사운드폰트 (Frank Wen) — CC BY 3.0 / MIT. 뮤즈스코어 3 기본 소리(MuseScore_General·MS Basic)의 바탕
+앱에서 쓰기 위해 2반음마다 골라, 앞 무음을 자르고 지속음 크기를 맞춘 뒤 3초 64kbps 모노 MP3 로 다시 인코딩했습니다 (이 변경도 같은 라이선스). 파일 이름 = 실음 midi.

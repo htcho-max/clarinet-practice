@@ -1,5 +1,6 @@
 import { adviseFingering, FING_LEGEND } from '../score/fingerAdvice';
 import { withSolfa, type SolfaMode } from '../score/solfa';
+import { currentSet } from '../audio/sampler';
 import { planBreaths, breathFromLongTones, GapDetector, gapsToAfterKeys, checkBreaths, type BreathCheck } from '../score/breath';
 import { LITE } from '../state/lite';
 import { useToday } from '../state/useToday';
@@ -1204,7 +1205,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
           </div>
         )}
         <div className="segmented small">
-          <button className={voice === 'sample' ? 'on' : ''} onClick={() => setVoice('sample')} disabled={playing}>{P.sampleName} 녹음</button>
+          <button className={voice === 'sample' ? 'on' : ''} onClick={() => setVoice('sample')} disabled={playing} title={`설정 → 악기 소리에서 바꿔요: ${currentSet().label}`}>{P.sampleName} 소리</button>
           <button className={voice === 'synth' ? 'on' : ''} onClick={() => setVoice('synth')} disabled={playing}>합성음</button>
         </div>
         {hasAcc && (

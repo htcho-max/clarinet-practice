@@ -434,6 +434,14 @@ function pianoNote(ctx: AudioContext, out: AudioNode, f: number, a: number, dur:
   return [o1, o2];
 }
 
+/** 짧은 악구를 4분음표로 들려줄 계획 (악보음 midi, 실음으로 옮김) — 소리 미리 듣기·따라 불기 */
+export function phrasePlan(notes: number[], bpm: number, lastBeats = 1): Plan {
+  const ns: ScoreNote[] = notes.map((midi, i) => ({ measure: 1, index: i, midi, beat: i, dur: i === notes.length - 1 ? lastBeats : 1, art: {} }));
+  const len = notes.length - 1 + lastBeats;
+  const s: ParsedScore = { title: '', measures: [1], notes: ns, measureLen: new Map([[1, len]]), time: [len, 4], parts: [''], transpose: 0, bars: [] };
+  return planPlayback(s, { bpm, from: 1, to: 1, countIn: false, expressive: true });
+}
+
 /** 재생 계획을 i 번째 음부터 잘라서 0초부터 시작하게 (재생 중 템포 바꿀 때) */
 export function slicePlan(plan: Plan, i: number): Plan {
   const start = plan.events[i]?.time ?? 0;

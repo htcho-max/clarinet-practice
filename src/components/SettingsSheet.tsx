@@ -11,10 +11,24 @@ import { useEffect, useRef, useState } from 'react';
 import { saveBackup, restoreBackup, storageInfo } from '../data/backup';
 import { checkForUpdate } from '../state/appUpdate';
 import { NumField } from './NumField';
+import { SOUND_SETS } from '../audio/soundSets';
+import { setSoundPrefs } from '../audio/soundPrefs';
+import { currentSet } from '../audio/sampler';
+import { scorePlayer, phrasePlan } from '../score/player';
 import { TOLERANCES, tolFor, type ToleranceId } from '../score/tolerance';
 
 export function SettingsSheet({ onClose }: { onClose: () => void }) {
   const { settings, update } = useSettings();
+  // 악기 소리: 고르면 바로 짧은 악구로 들려주기
+  const currentSetId = currentSet().id;
+  const [previewing, setPreviewing] = useState(false);
+  async function preview(id: string) {
+    setSoundPrefs({ soundSet: id });
+    setPreviewing(true);
+    const notes = P.id === 'flute' ? [72, 76, 79, 84, 79, 76, 72] : [60, 64, 67, 72, 67, 64, 60]; // 악보음
+    try { await scorePlayer.play(phrasePlan(notes, 112, 3), { a4: settings.a4, click: false, voice: 'sample' }); } catch { /* 무시 */ } finally { setPreviewing(false); }
+  }
+  useEffect(() => () => scorePlayer.stop(), []);
   const [updateMsg, setUpdateMsg] = useState('');
   const [fsPref, setFsPref] = useState(fullscreenPref);
 
@@ -93,11 +107,21 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
             ))}
           </div>
         </div>
-        {P.id === 'flute' && (
-          <div className="row-setting">
-            <label><input type="checkbox" checked={settings.fluteVibrato ?? true} onChange={(e) => update({ fluteVibrato: e.target.checked })} data-testid="flute-vib-setting" /> 플룻 재생에 비브라토 <small className="muted">(끄면 비브라토 없는 녹음으로, 여리게·세게에 따라 음색도 달라져요)</small></label>
+        <div className="row-setting col" data-testid="sound-setting">
+          <span>악기 소리 <small className="muted">(악보 듣기·반주·따라 불기에 쓰는 {P.sampleName} 소리)</small></span>
+          <div className="sound-list">
+            {SOUND_SETS[P.id].map((x) => {
+              const on = currentSetId === x.id;
+              return (
+                <button key={x.id} className={`sound-item ${on ? 'on' : ''}`} onClick={() => { update({ soundSet: x.id }); void preview(x.id); }} data-testid={`sound-${x.id}`} aria-pressed={on}>
+                  <b>{x.label}</b> <small className="muted">{x.desc}</small><br /><small className="muted">{x.credit}</small>
+                </button>
+              );
+            })}
           </div>
-        )}
+          <button className="mini" onClick={() => void preview(currentSetId)} disabled={previewing} data-testid="sound-preview">{previewing ? '불러오는 중…' : '▶ 지금 소리 들어 보기'}</button>
+          <small className="muted">고르면 짧은 악구로 들려줘요. 처음 고르는 소리는 인터넷으로 받아요(약 0.5MB). 합성음은 악보 화면의 듣기 버튼에서 고를 수 있어요.</small>
+        </div>
         <div className="row-setting col" data-testid="perf-setting">
           <span>성능 <small className="muted">(앱이 가끔 꺼지면 가벼운 모드)</small></span>
           <div className="segmented small">

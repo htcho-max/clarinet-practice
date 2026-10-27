@@ -21,7 +21,11 @@ export default defineConfig(({ mode }) => ({
       registerType: 'prompt', // 새 버전은 연습 중이 아닐 때 적용 (appUpdate.ts)
       // 악보 표시 라이브러리(약 1.5MB)도 오프라인에서 쓰도록 캐시
       // 새 서비스 워커는 바로 넘겨받고(기다리다 업데이트가 막히지 않게), 새로고침은 앱이 연습 중이 아닐 때 (appUpdate.ts)
-      workbox: { maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, skipWaiting: true, clientsClaim: true },
+      workbox: {
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, skipWaiting: true, clientsClaim: true,
+        // 다른 악기 소리(설정에서 고른 것)는 처음 쓸 때 받아 두고 오프라인에서도
+        runtimeCaching: [{ urlPattern: /\/(clarinet|flute)\/[a-z0-9-]+\/\d+\.mp3$/, handler: 'CacheFirst', options: { cacheName: 'sound-sets', expiration: { maxEntries: 400 } } }],
+      },
       includeAssets: ['icon.svg', 'icon-*.png', 'apple-touch-icon.png', 'clarinet/*.mp3', 'flute/*.mp3'],
       manifest: {
         name: '관악기 연습 도우미 (클라리넷·플룻)',
