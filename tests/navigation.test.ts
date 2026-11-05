@@ -123,3 +123,33 @@ describe('표현: 숨표·accel.·쉼표 늘임표', () => {
     expect(d[0]).toBeLessThanOrEqual(1);
   });
 });
+
+describe('스윙', () => {
+  const e8 = (st: string) => `<note><pitch><step>${st}</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>`;
+  const att = '<attributes><divisions>2</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>';
+  const q2 = (st: string) => `<note><pitch><step>${st}</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>`;
+  const mk = (dir: string, bars: string[], first = att) => `<?xml version="1.0"?><score-partwise><part-list><score-part id="P1"><part-name>x</part-name></score-part></part-list><part id="P1">${bars.map((b, i) => `<measure number="${i + 1}">${i === 0 ? first + dir : ''}${b}</measure>`).join('')}</part></score-partwise>`;
+  it('"Swing" 글자 → 2:1, 8분음표 둘째 음이 늦게', () => {
+    const s = parseMusicXML(mk(words('Up Tempo Swing'), [q2('C') + e8('D') + e8('E') + q2('F') + e8('G') + e8('A')]));
+    expect(s.swing).toBeCloseTo(2 / 3, 6);
+    const p = planPlayback(s, { bpm: 60, from: 1, to: 1, countIn: false });
+    expect(p.events.map((e) => +e.time.toFixed(4))).toEqual([0, 1, 1.6667, 2, 3, 3.6667]);
+    expect(+p.events[1].dur.toFixed(4)).toBe(0.6667);
+    const st = planPlayback(s, { bpm: 60, from: 1, to: 1, countIn: false, straight: true });
+    expect(st.events.map((e) => e.time)).toEqual([0, 1, 1.5, 2, 3, 3.5]);
+  });
+  it('<swing> 3:1, Straight 는 아님', () => {
+    const sw = '<direction><direction-type><words>Swing</words></direction-type><sound><swing><first>3</first><second>1</second><swing-type>eighth</swing-type></swing></sound></direction>';
+    expect(parseMusicXML(mk(sw, [q2('C') + q2('D') + q2('E') + q2('F')])).swing).toBeCloseTo(0.75, 6);
+    expect(parseMusicXML(mk(words('Straight 8ths'), [q2('C') + q2('D') + q2('E') + q2('F')])).swing).toBeUndefined();
+  });
+  it('못갖춘마디(8분음표 하나)도 박 기준으로', () => {
+    const xml = `<?xml version="1.0"?><score-partwise><part-list><score-part id="P1"><part-name>x</part-name></score-part></part-list><part id="P1"><measure number="0" implicit="yes">${att}${words('Swing')}${e8('G')}</measure><measure number="1">${q2('C') + q2('D') + q2('E') + q2('F')}</measure></part></score-partwise>`;
+    const s = parseMusicXML(xml);
+    const p = planPlayback(s, { bpm: 60, from: 0, to: 1, countIn: false });
+    // 여린박 8분음표는 넷째 박의 뒤쪽 (짧은 1/3박): 조금 늦게 들어가서 1마디 첫 박에 맞춰 끝남
+    expect(+p.events[0].time.toFixed(4)).toBe(0.1667);
+    expect(+p.events[0].dur.toFixed(4)).toBe(0.3333);
+    expect(+p.events[1].time.toFixed(4)).toBe(0.5);
+  });
+});

@@ -51,6 +51,8 @@ export interface ParsedScore {
   tempo?: number;
   /** 중간에 바뀌는 템포 (악보 순서, 처음 것 포함) */
   tempos?: { measure: number; beat: number; bpm: number }[];
+  /** 스윙: 박 안 8분음표 두 개 중 앞 음의 몫 (2/3 = 2:1). 스윙이 아니면 없음 */
+  swing?: number;
   /** 박자표가 바뀌는 마디 → [박 수, 음표] (처음 마디 포함, 바뀐 마디만) */
   timeChanges?: Map<number, [number, number]>;
 }
@@ -323,11 +325,25 @@ function parseDoc(doc: Document, opt: ParseOptions): ParsedScore {
   if (codaMarks.length >= 2 && !bars.some((b) => b.toCoda)) { bars[codaMarks[0]].toCoda = true; bars[codaMarks[codaMarks.length - 1]].coda = true; }
   else if (codaMarks.length === 1 && !bars.some((b) => b.coda)) bars[codaMarks[0]].coda = true;
   const nav = bars.some((b) => b.forward || b.backward || b.ending || b.jump);
+  // 스윙: <sound><swing> (MusicXML 4) 또는 "Swing" 글자 (Straight·even 8ths 면 아님)
+  let swing: number | undefined;
+  const swEl = root.getElementsByTagName('swing')[0];
+  if (swEl) {
+    if (swEl.getElementsByTagName('straight').length) swing = undefined;
+    else {
+      const a = Number(text(swEl, 'first')), b = Number(text(swEl, 'second'));
+      if (a > 0 && b > 0 && a !== b) swing = a / (a + b);
+    }
+  } else {
+    const ws = Array.from(root.getElementsByTagName('words')).map((w) => (w.textContent ?? '').toLowerCase());
+    if (ws.some((t) => /swing|shuffle/.test(t) && !/straight|no swing|even/.test(t))) swing = 2 / 3;
+  }
   const res: ParsedScore = {
     title, measures, notes, measureLen, time, parts, transpose, bars: nav ? bars : [],
     ...(Number.isFinite(tq) && tq >= 20 && tq <= 300 ? { tempo: Math.round(tq) } : {}),
     ...(tempos.length > 1 ? { tempos } : {}),
     ...(timeChanges.size > 1 ? { timeChanges } : {}),
+    ...(swing ? { swing } : {}),
   };
   return track ? ({ ...res, doc, els, ties: tieEls } as TrackedScore) : res;
 }

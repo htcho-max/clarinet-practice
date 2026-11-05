@@ -1,5 +1,6 @@
 import type { ParsedScore } from './parse';
 import type { Scored } from './align';
+import { makeSwing } from './meter';
 
 /**
  * 박자 채점 (템포와 상관없이).
@@ -37,9 +38,11 @@ function fit(pts: { x: number; y: number; w: number }[]) {
 
 export function analyzeRhythm(s: ParsedScore, rs: Scored[], window = 8): RhythmResult | null {
   const starts = measureStarts(s);
+  // 스윙 곡: 8분음표가 길게-짧게 연주되는 게 맞는 박자
+  const sw = makeSwing(s);
   const pts = rs
     .filter((r) => r.status !== 'missed' && r.playedStart != null && starts.has(r.note.measure))
-    .map((r) => ({ key: `${r.note.measure}:${r.note.index}`, measure: r.note.measure, x: starts.get(r.note.measure)! + r.note.beat, y: r.playedStart! }))
+    .map((r) => ({ key: `${r.note.measure}:${r.note.index}`, measure: r.note.measure, x: starts.get(r.note.measure)! + (sw ? sw(r.note.measure, r.note.beat) : r.note.beat), y: r.playedStart! }))
     .sort((a, b) => a.x - b.x);
   // 같은 위치 중복 제거, 시간이 거꾸로 가는 점(맞추기 실수) 제거
   const P = pts.filter((p, i) => i === 0 || (p.x > pts[i - 1].x && p.y > pts[i - 1].y));

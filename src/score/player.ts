@@ -4,6 +4,8 @@ import { resumeAudio } from '../audio/context';
 import { waveFor } from '../audio/timbre';
 import { midiToFreq, getTranspose } from '../audio/notes';
 import type { ParsedScore, ScoreNote } from './parse';
+import { measureMeter, makeSwing } from './meter';
+export { measureMeter, makeSwing, swingBeat } from './meter';
 import { loadSamples, scheduleSampleNote, reverbIR } from '../audio/sampler';
 import { reverbLevel } from '../audio/soundPrefs';
 import { noteClick, clearClicks } from '../audio/clicks';
@@ -32,6 +34,7 @@ export interface PlanOptions {
   bpm: number; from: number; to: number; countIn: boolean;
   /** 셈여림·쐐기·스타카토·이음줄·늘임표·rit. 살리기 */ expressive?: boolean;
   /** 마디 순서 (도돌이표 펼치기, playOrder). 없으면 악보 순서대로 한 번씩 */ order?: number[];
+  /** 악보가 스윙이어도 고르게 (8분음표를 똑같이) */ straight?: boolean;
 }
 
 /** 셈여림 기호 → 소리 크기 (0~1) */
@@ -90,30 +93,6 @@ export function expressNotes(s: ParsedScore): NoteExpression[] {
   return out;
 }
 
-/**
- * 마디마다 박자: 박자표(중간에 바뀌면 그대로), 한 마디 길이, 한 박 길이(4분음표 단위),
- * 마디가 시작하는 박 위치 phase — 못갖춘마디는 비어 있는 앞 박들, 도돌이표 때문에 둘로 나눈 마디의 뒤쪽은 앞쪽 길이
- */
-export function measureMeter(s: ParsedScore): Map<number, { beats: number; unit: number; nominal: number; beatQ: number; phase: number }> {
-  const out = new Map<number, { beats: number; unit: number; nominal: number; beatQ: number; phase: number }>();
-  let cur: [number, number] = s.time;
-  let prev: { len: number; nominal: number; phase: number } | null = null;
-  s.measures.forEach((m, k) => {
-    cur = s.timeChanges?.get(m) ?? cur;
-    const [beats, unit] = cur;
-    const nominal = (beats * 4) / unit, beatQ = 4 / unit;
-    const len = s.measureLen.get(m) ?? nominal;
-    let phase = 0;
-    if (len < nominal - 1e-6) {
-      if (k === 0) phase = nominal - len; // 못갖춘마디
-      else if (prev && prev.len < prev.nominal - 1e-6 && prev.phase === 0 && Math.abs(prev.len + len - nominal) < 1e-6) phase = prev.len; // 나눈 마디의 뒤쪽
-    }
-    out.set(m, { beats, unit, nominal, beatQ, phase });
-    prev = { len, nominal, phase };
-  });
-  return out;
-}
-
 /** 음마다 템포 배율 (악보 중간 ♩=… / 처음 템포). 바뀌는 곳이 없으면 null */
 export function tempoFactors(s: ParsedScore): number[] | null {
   const ts = s.tempos;
@@ -148,14 +127,20 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
   const notesOf = new Map<number, number[]>();
   s.notes.forEach((n, i) => { const a = notesOf.get(n.measure) ?? []; a.push(i); notesOf.set(n.measure, a); });
   const ex = o.expressive ? expressNotes(s) : null;
-  const inRange = segs.flatMap((g) => (notesOf.get(g.m) ?? []).map((i) => ({ n: s.notes[i], i, Q: g.Q0 + s.notes[i].beat })));
+  // 스윙: 8분음표 위치를 길게-짧게로 옮김 (박 위치는 그대로)
+  const sw = o.straight ? null : makeSwing(s);
+  const swb = (m: number, b: number) => (sw ? sw(m, b) : b);
+  const inRange = segs.flatMap((g) => (notesOf.get(g.m) ?? []).map((i) => {
+    const n = s.notes[i];
+    return { n, i, Q: g.Q0 + swb(g.m, n.beat), Qe: g.Q0 + swb(g.m, n.beat + n.dur) };
+  }));
   // 4분음표 위치 → 초. 표현을 살리면 음마다 빠르기 배율(rit.)과 늘임표(그 음 끝에 더 머묾)를 반영
   const bps: { Q: number; t: number; f: number }[] = [{ Q: 0, t: 0, f: 1 }];
   // 악보 중간의 템포 바뀜 (♩=… 표시): 처음 템포에 대한 배율로 재생 템포에 곱함
   const tf = tempoFactors(s);
   const useMap = !!ex || !!tf;
   if (useMap) {
-    for (const { n, i, Q } of inRange) {
+    for (const { n, i, Q, Qe } of inRange) {
       const last = bps[bps.length - 1];
       if (Q < last.Q - 1e-9) continue;
       let t = last.t + ((Q - last.Q) * q) / last.f;
@@ -163,8 +148,7 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
       if (ex && n.art?.restFermata) { const extra = Math.min(2, n.art.restFermata * q * 0.8 + 0.3); bps.push({ Q, t: t + extra, f: last.f }); t += extra; }
       bps.push({ Q, t, f: (ex ? ex[i].tempo : 1) * (tf ? tf[i] : 1) });
       if (ex && n.art?.fermata) {
-        const Qe = Q + n.dur;
-        const te = t + (n.dur * q) / ex[i].tempo;
+        const te = t + ((Qe - Q) * q) / ex[i].tempo;
         bps.push({ Q: Qe, t: te + Math.min(2, n.dur * q * 0.8 + 0.3), f: ex[i].tempo });
       }
     }
@@ -176,9 +160,9 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
     return bps[k].t + ((Q - bps[k].Q) * q) / bps[k].f;
   };
   const shift = mainShift(s);
-  const events: PlayEvent[] = inRange.map(({ n, Q }) => {
+  const events: PlayEvent[] = inRange.map(({ n, Q, Qe }) => {
     const time = qToT(Q);
-    return { note: n, time, dur: qToT(Q + n.dur) - time, shift };
+    return { note: n, time, dur: qToT(Qe) - time, shift };
   });
   if (ex) {
     events.forEach((e, k) => {
@@ -218,9 +202,9 @@ export function planPlayback(s: ParsedScore, o: PlanOptions, accParts: AccPart[]
     const accOf = new Map<number, typeof ap.score.notes>();
     for (const n of ap.score.notes) { const a = accOf.get(n.measure) ?? []; a.push(n); accOf.set(n.measure, a); }
     for (const g of segs) for (const n of accOf.get(g.m) ?? []) {
-      const Q = g.Q0 + n.beat;
+      const Q = g.Q0 + swb(g.m, n.beat);
       const time = qToT(Q);
-      accEv.push({ note: n, time, dur: qToT(Q + n.dur) - time, inst: ap.inst, shift: ap.score.transpose });
+      accEv.push({ note: n, time, dur: qToT(g.Q0 + swb(g.m, n.beat + n.dur)) - time, inst: ap.inst, shift: ap.score.transpose });
     }
   }
   accEv.sort((a, b) => a.time - b.time);

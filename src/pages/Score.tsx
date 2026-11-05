@@ -354,6 +354,10 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
   const [unfold, setUnfold] = useState(() => { try { return localStorage.getItem('clarinet-unfold') !== '0'; } catch { return true; } });
   useEffect(() => { try { localStorage.setItem('clarinet-unfold', unfold ? '1' : '0'); } catch { /* 무시 */ } }, [unfold]);
   const order = useMemo(() => (repeats && unfold ? playOrder(parsed) : undefined), [parsed, repeats, unfold]);
+  // 스윙 곡: 8분음표를 길게-짧게 (끄면 고르게). 박자 채점도 같은 기준
+  const [swingOn, setSwingOn] = useState(() => { try { return localStorage.getItem('clarinet-swing') !== '0'; } catch { return true; } });
+  useEffect(() => { try { localStorage.setItem('clarinet-swing', swingOn ? '1' : '0'); } catch { /* 무시 */ } }, [swingOn]);
+  const rhythmScore = useMemo(() => (parsed.swing && !swingOn ? { ...parsed, swing: undefined } : parsed), [parsed, swingOn]);
   // 템포 사다리: 목표 템포로 한 마디 세고 채점, 통과하면 +4
   const [ladderOn, setLadderOn] = useState(() => { try { return localStorage.getItem('clarinet-ladder') === '1'; } catch { return false; } });
   useEffect(() => { try { localStorage.setItem('clarinet-ladder', ladderOn ? '1' : '0'); } catch { /* 무시 */ } }, [ladderOn]);
@@ -395,7 +399,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
   useEffect(() => { try { localStorage.setItem(skipKey, JSON.stringify(accSkip)); } catch { /* 무시 */ } }, [accSkip]); // eslint-disable-line react-hooks/exhaustive-deps
   const accNames = useMemo(() => sortAcc([...new Set(expected.map((n) => n.acc).filter((x): x is string => !!x))]), [expected]);
 
-  const rhythm = useMemo(() => (result ? analyzeRhythm(parsed, result) : null), [result, parsed]);
+  const rhythm = useMemo(() => (result ? analyzeRhythm(rhythmScore, result) : null), [result, rhythmScore]);
   const noteColors = useMemo(() => {
     if (!result) return new Map<string, string>();
     if (view === 'rhythm' && rhythm) {
@@ -844,7 +848,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
   const curIdx = useRef(0);
   async function playRange(resumeAt?: number, o: { keepListening?: boolean; muteMine?: boolean; autoStop?: boolean; click?: boolean | 'visual'; acc?: boolean } = {}) {
     if (listening && !o.keepListening) stop();
-    const full = planPlayback(parsed, { bpm: playBpm, from, to, countIn: o.keepListening ? true : resumeAt === undefined && countIn, expressive: expressive && !o.keepListening, order }, hasAcc && (o.keepListening ? o.acc : accOn) ? accParts : []);
+    const full = planPlayback(parsed, { bpm: playBpm, from, to, countIn: o.keepListening ? true : resumeAt === undefined && countIn, expressive: expressive && !o.keepListening, order, straight: !swingOn }, hasAcc && (o.keepListening ? o.acc : accOn) ? accParts : []);
     const plan = resumeAt === undefined ? full : slicePlan(full, resumeAt);
     const base = resumeAt ?? 0;
     setPausedAt(null);
@@ -966,7 +970,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
       recordProgress(ex.progressId ?? ex.stepId, pct, sm.meanAbs, playBpm).then((ok) => setPassMsg(ok ? '통과! 다음 단계로 가거나 템포를 올려 보세요.' : null)).catch(() => {});
     }
     // 템포 사다리 판정
-    const rhNow = r.length ? analyzeRhythm(parsed, r) : null;
+    const rhNow = r.length ? analyzeRhythm(rhythmScore, r) : null;
     if (ctx.ladder !== undefined && r.some((x) => x.status !== 'missed')) {
       const pct = Math.round((sm.ok / Math.max(1, sm.total)) * 100);
       const v = ladderVerdict({ pct, target: ctx.ladder, bpm: rhNow ? rhNow.bpm : null, rhythmMeanAbs: rhNow ? rhNow.meanAbs : null, meanAbs: sm.meanAbs, tol });
@@ -1182,6 +1186,7 @@ function ScoreView({ score, onClose, initial }: { score: ScoreFile; onClose: () 
           <label><input type="checkbox" checked={withClick} onChange={(e) => setWithClick(e.target.checked)} /> 메트로놈</label>
           <label><input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} /> 반복</label>
           {repeats && <label title="도돌이표·1·2번 괄호·D.C.·D.S.·Fine·코다대로 펼쳐서 (구간 안에서)"><input type="checkbox" checked={unfold} onChange={(e) => setUnfold(e.target.checked)} disabled={playing} data-testid="unfold" /> 도돌이표대로</label>}
+          {parsed.swing && <label title="악보에 Swing 이라고 적힌 곡: 박 안의 8분음표 두 개를 길게-짧게 (끄면 고르게)"><input type="checkbox" checked={swingOn} onChange={(e) => setSwingOn(e.target.checked)} disabled={playing} data-testid="swing" /> 스윙</label>}
           <label title="셈여림(p·f·쐐기), 스타카토·테누토·강세, 이음줄(혀로 끊지 않고 이어서), 늘임표, rit.·a tempo 를 악보대로"><input type="checkbox" checked={expressive} onChange={(e) => setExpressive(e.target.checked)} disabled={playing} data-testid="expressive" /> 셈여림·아티큘레이션 살리기</label>
         </div>
         {!ex && origKey && (
