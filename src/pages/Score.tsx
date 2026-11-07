@@ -1562,7 +1562,7 @@ function RecPlayer({ id }: { id: number }) {
     db.recordings.get(id).then((r) => { if (r && alive) { u = URL.createObjectURL(r.blob); setUrl(u); } }).catch(() => {});
     return () => { alive = false; if (u) URL.revokeObjectURL(u); };
   }, [id]);
-  return url ? <audio controls src={url} preload="metadata" className="player" /> : <p className="muted small">녹음이 지워졌어요.</p>;
+  return url ? <audio controls src={url} preload="metadata" className="player" /> : <p className="muted small">녹음이 이 기기에 없어요 (지웠거나 다른 기기에서 한 녹음).</p>;
 }
 
 /** 이 악보의 연습 기록 (최근 순) */

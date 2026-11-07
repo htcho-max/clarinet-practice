@@ -1049,6 +1049,58 @@ try {
     ok(errors.length === 0, `콘솔 오류 없음 ${errors.join(' | ')}`);
     await browser.close();
   }
+  // ── 19. 기기 간 동기화 (바이올린 앱과 같은 서버): 탭에서 켜고 악보 올리기 → 휴대폰은 바이올린 앱 서버를 찾아 켜기 → 악보가 옴 ──
+  {
+    const { handle } = await import('../tests/helpers/syncServer.ts');
+    const { fakeD1 } = await import('../tests/helpers/fakeD1.ts');
+    const SKEY = 'smoke-sync-key-1234567890', SURL = 'https://sync.smoke.example';
+    const env = { DB: await fakeD1(), SYNC_KEY: SKEY };
+    const route = async (ctx) => ctx.route(`${SURL}/**`, async (r) => {
+      const req = r.request();
+      const res = await handle(new Request(req.url(), { method: req.method(), headers: req.headers(), body: ['GET', 'HEAD'].includes(req.method()) ? undefined : req.postDataBuffer() }), env);
+      await r.fulfill({ status: res.status, headers: Object.fromEntries(res.headers), body: Buffer.from(await res.arrayBuffer()) });
+    });
+    // 기기 A (탭)
+    const A = await launch('bb466.wav');
+    await route(A.page.context());
+    await tab(A.page, 'score');
+    await A.page.waitForTimeout(800);
+    await A.page.getByTestId('score-file').setInputFiles(path.resolve('scripts/test-breath.musicxml'));
+    await A.page.waitForTimeout(1500);
+    await tab(A.page, 'today');
+    await A.page.getByRole('button', { name: '설정' }).click();
+    ok(await seen(A.page.getByTestId('sync-card')), '설정: 기기 동기화');
+    ok(!(await A.page.getByTestId('sync-known').isVisible().catch(() => false)), '쓰던 서버가 없으면 안내 없음');
+    await A.page.getByTestId('sync-url').fill(SURL);
+    await A.page.getByTestId('sync-key').fill(SKEY);
+    A.page.once('dialog', (d) => d.accept());
+    await A.page.getByTestId('sync-on').click();
+    await A.page.waitForTimeout(4000);
+    const n = (await env.DB.prepare("SELECT COUNT(*) AS c FROM rec WHERE t = 'clscores'").first()).c;
+    ok(n >= 1, `악보가 서버에 올라감 (clscores ${n}개)`);
+    ok(A.errors.length === 0, `콘솔 오류 없음 ${A.errors.join(' | ')}`);
+    await A.browser.close();
+    // 기기 B (휴대폰): 바이올린 앱에서 쓰던 서버가 이 기기 저장소에 있음
+    const B = await launch('bb466.wav');
+    await route(B.page.context());
+    await B.page.evaluate(([u, k]) => localStorage.setItem('violin-sync', JSON.stringify({ url: u, key: k, pushAt: 0, pullSeq: 0, initial: false })), [SURL, SKEY]);
+    await B.page.reload();
+    await B.page.waitForTimeout(1200);
+    await B.page.getByRole('button', { name: '설정' }).click();
+    ok(await seen(B.page.getByTestId('sync-known')), `바이올린 앱 서버 찾음 (${await B.page.getByTestId('sync-known').textContent().catch(() => '')})`);
+    B.page.once('dialog', (d) => d.accept());
+    await B.page.getByTestId('sync-use-known').click();
+    await B.page.waitForTimeout(5000);
+    await tab(B.page, 'score');
+    await B.page.waitForTimeout(1500);
+    const titles = await B.page.getByTestId('score-open').allTextContents();
+    ok(titles.some((t) => /숨 쉬는 곳/.test(t)), `다른 기기 악보가 옴 (${titles.join(' / ')})`);
+    await tab(B.page, 'today');
+    await B.page.getByRole('button', { name: '설정' }).click();
+    ok(/마지막 동기화/.test(await B.page.getByTestId('sync-status').textContent()), `동기화 상태 (${await B.page.getByTestId('sync-status').textContent()})`);
+    ok(B.errors.length === 0, `콘솔 오류 없음 ${B.errors.join(' | ')}`);
+    await B.browser.close();
+  }
 } catch (e) {
   console.log('FAIL 예외', e.message.split('\n')[0]);
   process.exitCode = 1;

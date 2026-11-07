@@ -5,6 +5,7 @@ import { ItemAlert } from './components/ItemAlert';
 import { useEffect, useState } from 'react';
 import { TabBar, type TabId } from './components/TabBar';
 import { StatusBar } from './components/StatusBar';
+import { hasSyncPrefill } from './components/SyncCard';
 import { SettingsSheet } from './components/SettingsSheet';
 import { Today } from './pages/Today';
 import { Tuner } from './pages/Tuner';
@@ -26,7 +27,7 @@ export function App({ updatedFrom = null }: { updatedFrom?: string | null }) {
   const [tab, setTab] = useState<TabId>(() => {
     try { const t = localStorage.getItem('clarinet-tab') as TabId; return TABS.some((x) => x.id === t) ? t : 'today'; } catch { return 'today'; }
   });
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(() => hasSyncPrefill());
   const { ready, settings, update } = useSettings();
   // 지난번에 재생·마이크 쓰는 중에 꺼졌으면 알려 주기
   const [crash, setCrash] = useState<CrashInfo | null>(() => takeCrash());

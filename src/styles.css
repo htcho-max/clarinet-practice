@@ -608,3 +608,8 @@ html.lite .acc-hl { mix-blend-mode: normal; background: rgba(250, 204, 21, 0.35)
 .sound-list { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .sound-item { text-align: left; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text); line-height: 1.35; }
 .sound-item.on { border-color: var(--accent, #2563eb); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #2563eb) 30%, transparent); }
+/* 기기 동기화 */
+.sync-card { display: flex; flex-direction: column; gap: 6px; }
+.sync-card label { display: flex; flex-direction: column; gap: 2px; }
+.sync-card input { width: 100%; }
+.sync-known { background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 8px; padding: 6px 8px; }

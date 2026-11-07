@@ -1,5 +1,7 @@
 import { P } from '../instruments/profiles';
 import { db } from './db';
+import { markRemote, syncOn, SYNC_TABLES } from '../sync/track';
+import { afterRestore, globalizeIds } from '../sync/engine';
 
 /** 백업 파일 형식 (버전 2: 모든 표) */
 export interface Backup {
@@ -70,16 +72,22 @@ export async function restoreBackup(text: string): Promise<{ counts: Record<stri
   const recs = data.withRecordings && Array.isArray(t.recordings)
     ? await Promise.all((t.recordings as { blob: string }[]).map(async (r) => ({ ...r, blob: await dataURLToBlob(r.blob) })))
     : null;
-  await db.transaction('rw', [db.sessions, db.pieces, db.kv, db.ladders, db.scores, db.scoreRuns, db.toneRuns, db.reviews, db.gear, db.lessonNotes, db.recordings], async () => {
+  // 동기화 중이면: 지운 줄을 묘비로 남기지 않고(다른 기기 기록이 지워지지 않게), 되돌린 줄은 지금 시각으로(다른 기기에 퍼지게)
+  const syncing = syncOn();
+  const now = Date.now();
+  await db.transaction('rw', [db.sessions, db.pieces, db.kv, db.ladders, db.scores, db.scoreRuns, db.toneRuns, db.reviews, db.gear, db.lessonNotes, db.recordings], async (tx) => {
+    if (syncing) markRemote(tx);
     for (const name of TABLES) {
       const rows = name === 'recordings' ? recs : (t[name] as unknown[] | undefined);
       if (!rows) continue;
       const table = (db as unknown as Record<string, { clear: () => Promise<void>; bulkPut: (r: unknown[]) => Promise<unknown> }>)[name];
       await table.clear();
-      if (rows.length) await table.bulkPut(rows);
+      const put = syncing && (SYNC_TABLES as readonly string[]).includes(name) ? rows.map((r) => ({ ...(r as object), _u: now })) : rows;
+      if (put.length) await table.bulkPut(put);
       counts[name] = rows.length;
     }
   });
+  if (syncing) { await globalizeIds(); afterRestore(); }
   return { counts };
 }
 

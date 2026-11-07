@@ -6,6 +6,7 @@ import { instrumentSemis, setTranspose } from '../audio/notes';
 import { P } from '../instruments/profiles';
 import { setOutputLatency } from '../audio/latency';
 import { setSoundPrefs } from '../audio/soundPrefs';
+import { SYNC_APPLIED_EVENT } from '../sync/engine';
 
 interface Ctx { settings: Settings; update: (patch: Partial<Settings>) => void; ready: boolean }
 const SettingsContext = createContext<Ctx>({ settings: DEFAULT_SETTINGS, update: () => {}, ready: false });
@@ -16,10 +17,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    db.kv.get('settings')
+    const load = () => db.kv.get('settings')
       .then((row) => setSettings(mergeSettings(row?.value as Partial<Settings> | undefined)))
       .catch(() => {})
       .finally(() => setReady(true));
+    void load();
+    // 다른 기기 설정을 받아 넣었으면 다시 읽기
+    window.addEventListener(SYNC_APPLIED_EVENT, load);
+    return () => window.removeEventListener(SYNC_APPLIED_EVENT, load);
   }, []);
 
   // 이조: 마이크 값·재생 소리가 모두 이 값을 씀
